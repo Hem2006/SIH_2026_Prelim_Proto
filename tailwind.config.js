@@ -17,8 +17,16 @@ export default {
           600: '#345e73',
           700: '#2e4f61',
           800: '#2b4452',
-          900: '#1f4e5c', // Deep Teal Primary Color
+          900: '#1f4e5c',
           950: '#112932',
+        },
+        sidebar: {
+          DEFAULT: '#2A3F54',
+          dark: '#243545',
+          darker: '#1A2D3F',
+          light: '#354F65',
+          hover: '#425C73',
+          active: '#1ABB9C',
         }
       }
     },
