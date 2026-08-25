@@ -40,8 +40,25 @@ import {
   initialProcurements,
   initialVerifiers,
   initialOnboardingRequests,
-  initialSectorRules
+  initialSectorRules,
+  SECTORS,
+  formatValue
 } from "./data/seedData";
+
+const OPERATOR_SYMBOL = { ">=": "≥", "<=": "≤", ">": ">", "<": "<", "==": "=" };
+
+/** Does a measured value clear its locked threshold? */
+function meetsThreshold(criterion, achieved) {
+  if (achieved === undefined) return true;
+  switch (criterion.operator) {
+    case ">=": return achieved >= criterion.threshold;
+    case "<=": return achieved <= criterion.threshold;
+    case ">": return achieved > criterion.threshold;
+    case "<": return achieved < criterion.threshold;
+    case "==": return achieved === criterion.threshold;
+    default: return false;
+  }
+}
 
 export default function App() {
   // App state
@@ -894,7 +911,7 @@ function StartupDashboard({
   const [timeline, setTimeline] = useState("");
 
   // Evidence forms
-  const [waterLossVal, setWaterLossVal] = useState("22% reduction");
+  const [headlineVal, setHeadlineVal] = useState("22% reduction");
   const [durVal, setDurVal] = useState("100 days");
   const [sensorsVal, setSensorsVal] = useState("25 sensors");
   const [notesVal, setNotesVal] = useState("");
@@ -945,9 +962,9 @@ function StartupDashboard({
           ...p,
           status: "Completed", // awaiting verifier
           evidence: {
-            waterLossReduction: waterLossVal,
+            headlineMetric: headlineVal,
             duration: durVal,
-            sensorsDeployed: sensorsVal,
+            assetsDeployed: sensorsVal,
             summary: notesVal || "Pilot executed successfully matching initial scope specifications.",
             docs: "Evidence_Report_Telemetry_Log.pdf",
             submittedAt: new Date().toISOString().split("T")[0]
@@ -1098,8 +1115,7 @@ function StartupDashboard({
               className="border border-slate-300 rounded px-3 py-2 text-sm"
             >
               <option value="All">All Sectors</option>
-              <option value="Water & Sanitation">Water & Sanitation</option>
-              <option value="Energy & Cleantech">Energy & Cleantech</option>
+              {SECTORS.map(sec => <option key={sec} value={sec}>{sec}</option>)}
             </select>
             <select 
               value={budgetFilter}
@@ -1241,7 +1257,7 @@ function StartupDashboard({
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-b border-emerald-100 py-3 text-sm">
                       <div>
                         <span className="text-[10px] text-slate-400 font-bold block">Key Success Metric</span>
-                        <span className="font-bold text-slate-800">{p.evidence?.waterLossReduction}</span>
+                        <span className="font-bold text-slate-800">{p.evidence?.headlineMetric}</span>
                       </div>
                       <div>
                         <span className="text-[10px] text-slate-400 font-bold block">Audited Duration</span>
@@ -1264,7 +1280,9 @@ function StartupDashboard({
                     </div>
 
                     <div className="bg-white p-3 rounded border border-slate-200 flex justify-between items-center text-xs">
-                      <span className="font-mono text-slate-500">Hash: SHA256- {p.id}-CERT-X992</span>
+                      <span className="font-mono text-slate-500 truncate mr-3" title={p.metricLock?.hash}>
+                        Metric-lock SHA-256: {p.metricLock?.hash}
+                      </span>
                       <span className="text-emerald-700 font-bold flex items-center gap-0.5">
                         <ShieldCheck className="w-4 h-4" /> GFR EXEMPTION COMPLIANT
                       </span>
@@ -1405,8 +1423,8 @@ function StartupDashboard({
                   type="text"
                   required
                   placeholder="e.g. 22% reduction in water loss"
-                  value={waterLossVal}
-                  onChange={(e) => setWaterLossVal(e.target.value)}
+                  value={headlineVal}
+                  onChange={(e) => setHeadlineVal(e.target.value)}
                   className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-teal-500"
                 />
               </div>
@@ -1833,8 +1851,7 @@ function OfficialDashboard({
               className="border border-slate-300 rounded px-3 py-2 text-sm"
             >
               <option value="All">All Sectors</option>
-              <option value="Water & Sanitation">Water & Sanitation</option>
-              <option value="Energy & Cleantech">Energy & Cleantech</option>
+              {SECTORS.map(sec => <option key={sec} value={sec}>{sec}</option>)}
             </select>
             <div className="flex justify-end items-center">
               <span className="text-xs text-slate-500 font-bold">
@@ -1866,7 +1883,7 @@ function OfficialDashboard({
                   {/* Audit Metrics */}
                   <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-1">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Audited Outcome</p>
-                    <p className="text-sm font-extrabold text-emerald-800">{p.evidence.waterLossReduction}</p>
+                    <p className="text-sm font-extrabold text-emerald-800">{p.evidence.headlineMetric}</p>
                     <p className="text-xs text-slate-500">Duration: {p.evidence.duration} | Evaluator Score: {p.verification.score}/100</p>
                   </div>
 
@@ -1995,7 +2012,7 @@ function OfficialDashboard({
             <form onSubmit={handleFeedbackSubmit} className="space-y-4">
               <div className="bg-slate-50 p-3 rounded text-xs space-y-1">
                 <p><strong>Pilot:</strong> {pilots.find(p => p.id === feedbackPilotId)?.title}</p>
-                <p><strong>Startup Outcome Claimed:</strong> {pilots.find(p => p.id === feedbackPilotId)?.evidence?.waterLossReduction}</p>
+                <p><strong>Startup Outcome Claimed:</strong> {pilots.find(p => p.id === feedbackPilotId)?.evidence?.headlineMetric}</p>
               </div>
 
               <div>
@@ -2048,7 +2065,7 @@ function OfficialDashboard({
                 <span className="font-bold text-emerald-800 uppercase tracking-wide block">✓ Certified Precedent Reference</span>
                 <p><strong>Pilot Precedent:</strong> {pilots.find(p => p.id === adoptionModalOpen)?.title}</p>
                 <p><strong>Partner Startup:</strong> {pilots.find(p => p.id === adoptionModalOpen)?.application.startupName}</p>
-                <p><strong>Certified Metrics:</strong> {pilots.find(p => p.id === adoptionModalOpen)?.evidence.waterLossReduction}</p>
+                <p><strong>Certified Metrics:</strong> {pilots.find(p => p.id === adoptionModalOpen)?.evidence.headlineMetric}</p>
                 <p><strong>Verifier:</strong> {pilots.find(p => p.id === adoptionModalOpen)?.verification.verifierName}</p>
               </div>
 
@@ -2133,33 +2150,54 @@ function VerifierDashboard({
   const [activePilotId, setActivePilotId] = useState(null); // pilot ID being evaluated
   const [score, setScore] = useState(90);
   const [notes, setNotes] = useState("");
-  const [c1, setC1] = useState(true);
-  const [c2, setC2] = useState(true);
-  const [c3, setC3] = useState(true);
+  // One entry per criterion in the pilot's own metric lock, keyed by criterion id.
+  const [checks, setChecks] = useState({});
 
   const pendingList = pilots.filter(p => p.status === "Completed");
-  const verifiedHistory = pilots.filter(p => p.status === "Certified" || p.status === "Rejected");
+  const verifiedHistory = pilots.filter(p => p.status === "Certified" || p.status === "Negative Precedent" || p.status === "Rejected");
 
-  const handleVerifyAction = (statusOption) => {
+  const handleVerifyAction = () => {
     if (!notes.trim()) {
       showToast("Please provide evaluator notes before deciding", "error");
       return;
     }
     const updated = pilots.map(p => {
       if (p.id === activePilotId) {
+        const criteria = p.metricLock?.criteria || [];
+        const scorecard = criteria.map(k => ({
+          criterion: `${k.label} ${OPERATOR_SYMBOL[k.operator] || k.operator} ${formatValue(k.threshold, k.unit)}`,
+          passed: checks[k.id] !== false
+        }));
+        const results = criteria.map(k => ({
+          criterionId: k.id,
+          label: k.label,
+          metric: k.metric,
+          operator: k.operator,
+          threshold: k.threshold,
+          unit: k.unit,
+          achieved: p.evidence?.measured?.[k.id],
+          passed: checks[k.id] !== false
+        }));
+        const passed = results.every(r => r.passed);
+
         return {
           ...p,
-          status: statusOption, // Certified or Rejected
+          // A failure is certified, not discarded — that is the whole point of a
+          // Negative Precedent. The status follows the criteria, not the button.
+          status: passed ? "Certified" : "Negative Precedent",
           verification: {
+            certificateId: `${passed ? "PC" : "NP"}-${new Date().getFullYear()}-LIVE-${String(p.id).slice(-4).toUpperCase()}`,
+            certificateType: passed ? "positive" : "negative",
+            outcome: passed ? "PASS" : "FAIL",
             verifierId: currentUser.id,
             verifierName: currentUser.name,
+            verifierEmpanelmentId: currentUser.empanelmentId || "EMP/PENDING",
+            verifierOrganization: currentUser.organization || "",
             score: parseInt(score),
-            scorecard: [
-              { criterion: "≥15% measurable improvement", passed: c1 },
-              { criterion: "pilot ran ≥60 days", passed: c2 },
-              { criterion: "no safety incidents", passed: c3 }
-            ],
+            results,
+            scorecard,
             notes,
+            citesCertificates: [],
             certifiedAt: new Date().toISOString().split("T")[0]
           }
         };
@@ -2169,7 +2207,8 @@ function VerifierDashboard({
     setPilots(updated);
     setActivePilotId(null);
     setNotes("");
-    showToast(`Pilot verification process complete: marked as ${statusOption}!`, "success");
+    setChecks({});
+    showToast("Verification complete. Certificate issued against the pre-registered metric lock.", "success");
   };
 
   return (
@@ -2227,9 +2266,9 @@ function VerifierDashboard({
                   <div>
                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Startup Outcome Submission</h4>
                     <ul className="text-xs space-y-1 text-slate-700">
-                      <li><strong>Outcome claimed:</strong> {p.evidence.waterLossReduction}</li>
+                      <li><strong>Outcome claimed:</strong> {p.evidence.headlineMetric}</li>
                       <li><strong>Duration:</strong> {p.evidence.duration}</li>
-                      <li><strong>Assets:</strong> {p.evidence.sensorsDeployed}</li>
+                      <li><strong>Assets:</strong> {p.evidence.assetsDeployed}</li>
                       <li className="mt-2 text-slate-500">"{p.evidence.summary}"</li>
                     </ul>
                   </div>
@@ -2254,6 +2293,12 @@ function VerifierDashboard({
                       setActivePilotId(p.id);
                       setNotes("");
                       setScore(90);
+                      setChecks(Object.fromEntries(
+                        (p.metricLock?.criteria || []).map(k => [
+                          k.id,
+                          meetsThreshold(k, p.evidence?.measured?.[k.id])
+                        ])
+                      ));
                     }}
                     className="bg-govteal-900 hover:bg-govteal-950 text-white font-bold text-xs py-2 px-4 rounded transition"
                   >
@@ -2265,20 +2310,31 @@ function VerifierDashboard({
                     
                     {/* Scorecard checklist */}
                     <div className="space-y-3">
-                      <p className="text-xs font-bold text-slate-500">Verify Sector Criteria templates:</p>
-                      
-                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
-                        <input type="checkbox" checked={c1} onChange={(e) => setC1(e.target.checked)} className="rounded border-slate-300 text-teal-600" />
-                        <span>Metric Exceeded (≥15% measurable improvement logged)</span>
-                      </label>
-                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
-                        <input type="checkbox" checked={c2} onChange={(e) => setC2(e.target.checked)} className="rounded border-slate-300 text-teal-600" />
-                        <span>Execution period compliant (pilot ran ≥60 days)</span>
-                      </label>
-                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
-                        <input type="checkbox" checked={c3} onChange={(e) => setC3(e.target.checked)} className="rounded border-slate-300 text-teal-600" />
-                        <span>Security & stability compliance (zero safety incidents reported)</span>
-                      </label>
+                      <p className="text-xs font-bold text-slate-500">
+                        Score against the thresholds locked on {p.metricLock?.lockedAt?.split("T")[0]} — before this pilot opened for applications:
+                      </p>
+
+                      {(p.metricLock?.criteria || []).map(k => {
+                        const achieved = p.evidence?.measured?.[k.id];
+                        return (
+                          <label key={k.id} className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-700 cursor-pointer bg-white border border-slate-200 rounded px-3 py-2">
+                            <span className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={checks[k.id] !== false}
+                                onChange={(e) => setChecks(prev => ({ ...prev, [k.id]: e.target.checked }))}
+                                className="rounded border-slate-300 text-teal-600"
+                              />
+                              <span>{k.label}</span>
+                            </span>
+                            <span className="font-mono text-[11px] text-slate-500 whitespace-nowrap">
+                              required {OPERATOR_SYMBOL[k.operator] || k.operator} {formatValue(k.threshold, k.unit)}
+                              <span className="mx-1.5 text-slate-300">|</span>
+                              achieved <strong className="text-slate-900">{achieved === undefined ? "—" : formatValue(achieved, k.unit)}</strong>
+                            </span>
+                          </label>
+                        );
+                      })}
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2318,16 +2374,10 @@ function VerifierDashboard({
                         Cancel
                       </button>
                       <button
-                        onClick={() => handleVerifyAction("Rejected")}
-                        className="bg-rose-600 hover:bg-rose-700 text-white font-bold py-1.5 px-3 rounded text-xs"
-                      >
-                        Reject Pilot
-                      </button>
-                      <button
-                        onClick={() => handleVerifyAction("Certified")}
+                        onClick={handleVerifyAction}
                         className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-3 rounded text-xs"
                       >
-                        Certify Precedent
+                        Issue Certificate
                       </button>
                     </div>
                   </div>
@@ -2559,6 +2609,7 @@ function AdminDashboard({
               {/* Vertical SVG Bar Chart */}
               <div className="flex flex-col space-y-4">
                 <BarItem label="Certified" value={pilots.filter(p => p.status === "Certified").length} max={totalPilotsCount} color="bg-emerald-500" />
+                <BarItem label="Negative Precedent" value={pilots.filter(p => p.status === "Negative Precedent").length} max={totalPilotsCount} color="bg-rose-700" />
                 <BarItem label="Running" value={pilots.filter(p => p.status === "Running").length} max={totalPilotsCount} color="bg-blue-500" />
                 <BarItem label="Completed" value={pilots.filter(p => p.status === "Completed").length} max={totalPilotsCount} color="bg-amber-500" />
                 <BarItem label="Applied" value={pilots.filter(p => p.status === "Applied").length} max={totalPilotsCount} color="bg-slate-400" />
@@ -2649,9 +2700,7 @@ function AdminDashboard({
                   onChange={(e) => setVSector(e.target.value)}
                   className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
                 >
-                  <option value="Water & Sanitation">Water & Sanitation</option>
-                  <option value="Energy & Cleantech">Energy & Cleantech</option>
-                  <option value="Healthcare & Medtech">Healthcare & Medtech</option>
+                  {SECTORS.map(sec => <option key={sec} value={sec}>{sec}</option>)}
                 </select>
               </div>
 
@@ -2762,9 +2811,7 @@ function AdminDashboard({
                   onChange={(e) => setActiveRuleSector(e.target.value)}
                   className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
                 >
-                  <option value="Water & Sanitation">Water & Sanitation</option>
-                  <option value="Energy & Cleantech">Energy & Cleantech</option>
-                  <option value="Healthcare & Medtech">Healthcare & Medtech</option>
+                  {SECTORS.map(sec => <option key={sec} value={sec}>{sec}</option>)}
                 </select>
               </div>
 
@@ -2974,6 +3021,7 @@ function StatusBadge({ status }) {
     Running: "bg-blue-50 text-blue-700 border-blue-200",
     Completed: "bg-amber-50 text-amber-700 border-amber-200",
     Certified: "bg-emerald-50 text-emerald-800 border-emerald-200",
+    "Negative Precedent": "bg-rose-50 text-rose-800 border-rose-300",
     Rejected: "bg-rose-50 text-rose-700 border-rose-200"
   };
   const colorClass = colors[status] || "bg-slate-100 text-slate-600";
@@ -3040,10 +3088,10 @@ function PilotDetailModal({ pilot, onClose, currentUser }) {
               <h4 className="text-xs font-bold uppercase tracking-wider text-amber-800 border-b pb-1">Outcome Evidence Log</h4>
               <div className="grid grid-cols-2 gap-4 text-xs">
                 <div>
-                  <strong>Outcome Metric:</strong> <span className="font-bold text-teal-800">{pilot.evidence.waterLossReduction}</span>
+                  <strong>Outcome Metric:</strong> <span className="font-bold text-teal-800">{pilot.evidence.headlineMetric}</span>
                 </div>
                 <div>
-                  <strong>Assets Deployed:</strong> {pilot.evidence.sensorsDeployed}
+                  <strong>Assets Deployed:</strong> {pilot.evidence.assetsDeployed}
                 </div>
               </div>
               <p className="text-xs bg-white p-2.5 rounded border text-slate-600"><strong>Telemetry Narrative:</strong> {pilot.evidence.summary}</p>
