@@ -43,7 +43,11 @@ import {
   X,
   Activity,
   PieChart,
-  Handshake
+  Handshake,
+  Printer,
+  CreditCard,
+  Receipt,
+  ScrollText
 } from "lucide-react";
 import {
   initialUsers,
@@ -51,8 +55,23 @@ import {
   initialProcurements,
   initialVerifiers,
   initialOnboardingRequests,
-  initialSectorRules
+  initialSectorRules,
+  createPilotEscrow
 } from "./data/seedData";
+
+const getPilotApplications = (pilot) => {
+  if (!pilot) return [];
+  if (Array.isArray(pilot.applications) && pilot.applications.length > 0) {
+    return pilot.applications;
+  }
+  if (pilot.application) {
+    return [{
+      ...pilot.application,
+      status: pilot.application.status || (pilot.status === "Running" || pilot.status === "Completed" || pilot.status === "Certified" ? "Selected" : "Pending")
+    }];
+  }
+  return [];
+};
 
 export default function App() {
   // App state
@@ -73,6 +92,8 @@ export default function App() {
   const [selectedPilot, setSelectedPilot] = useState(null); // for detail modals
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(null); // pilot id to upload evidence
   const [adoptionModalOpen, setAdoptionModalOpen] = useState(null); // pilot id to adopt
+  const [docketModalData, setDocketModalData] = useState(null); // pilot or procurement data for CVC Audit Docket
+  const [contractModalData, setContractModalData] = useState(null); // procurement or pilot data for Contract Agreement Viewer
   const [toast, setToast] = useState(null);
 
   // Sidebar state
@@ -95,6 +116,8 @@ export default function App() {
     setCurrentUser(null);
     setActiveRole(null);
     setRegistrationMode(null);
+    setDocketModalData(null);
+    setContractModalData(null);
     setSelectedPilot(null);
     showToast("Application state reset to original seed data", "info");
   };
@@ -128,6 +151,7 @@ export default function App() {
     if (activeRole === "Startup") return [
       { label: "Dashboard", tab: "dashboard", icon: <Home className="w-4 h-4" /> },
       { label: "Discover Pilots", tab: "opportunities", icon: <Compass className="w-4 h-4" /> },
+      { label: "PFMS Escrow Tracker", tab: "escrow", icon: <CreditCard className="w-4 h-4" /> },
       { label: "My Pilot Passport", tab: "passport", icon: <Award className="w-4 h-4" /> },
     ];
     if (activeRole === "Government Official") return [
@@ -239,6 +263,7 @@ export default function App() {
                 <h2 className="text-sm font-semibold text-slate-600 hidden sm:block">
                   {activeRole === "Startup" && currentTab === "dashboard" && "Startup Dashboard"}
                   {activeRole === "Startup" && currentTab === "opportunities" && "Discover Pilots"}
+                  {activeRole === "Startup" && currentTab === "escrow" && "PFMS Milestone Escrow & Disbursement Station"}
                   {activeRole === "Startup" && currentTab === "passport" && "Pilot Passport"}
                   {activeRole === "Government Official" && currentTab === "dashboard" && "Sponsor Hub"}
                   {activeRole === "Government Official" && currentTab === "post-pilot" && "Post a Pilot"}
@@ -328,6 +353,9 @@ export default function App() {
                   pilots={pilots}
                   setPilots={setPilots}
                   procurements={procurements}
+                  setProcurements={setProcurements}
+                  setDocketModalData={setDocketModalData}
+                  setContractModalData={setContractModalData}
                   showToast={showToast}
                   selectedPilot={selectedPilot}
                   setSelectedPilot={setSelectedPilot}
@@ -344,6 +372,8 @@ export default function App() {
                   setPilots={setPilots}
                   procurements={procurements}
                   setProcurements={setProcurements}
+                  setDocketModalData={setDocketModalData}
+                  setContractModalData={setContractModalData}
                   showToast={showToast}
                   selectedPilot={selectedPilot}
                   setSelectedPilot={setSelectedPilot}
@@ -386,6 +416,37 @@ export default function App() {
             </div>
           )}
         </main>
+
+        {docketModalData && (
+          <AuditDocketModal
+            data={docketModalData}
+            pilots={pilots}
+            procurements={procurements}
+            onClose={() => setDocketModalData(null)}
+            showToast={showToast}
+          />
+        )}
+
+        {contractModalData && (
+          <ContractDetailsModal
+            data={contractModalData}
+            pilots={pilots}
+            procurements={procurements}
+            currentUser={currentUser}
+            onClose={() => setContractModalData(null)}
+            showToast={showToast}
+            onAcceptOffer={(procId) => {
+              setProcurements(prev => prev.map(pr => pr.id === procId ? { ...pr, status: "Accepted" } : pr));
+              setContractModalData(null);
+              showToast("Agreement signed! Scaled procurement contract legally executed under GFR 170/173.", "success");
+            }}
+            onDeclineOffer={(procId) => {
+              setProcurements(prev => prev.map(pr => pr.id === procId ? { ...pr, status: "Declined" } : pr));
+              setContractModalData(null);
+              showToast("Adoption offer declined.", "info");
+            }}
+          />
+        )}
 
         {/* Footer */}
         <footer className="bg-white border-t border-slate-200 py-4 mt-auto">
@@ -795,8 +856,9 @@ function RegistrationView({
    1. STARTUP DASHBOARD & VIEWS (RAM)
    ========================================================== */
 function StartupDashboard({
-  currentTab, setCurrentTab, currentUser, pilots, setPilots, procurements,
-  showToast, selectedPilot, setSelectedPilot, evidenceModalOpen, setEvidenceModalOpen
+  currentTab, setCurrentTab, currentUser, pilots, setPilots, procurements, setProcurements,
+  showToast, selectedPilot, setSelectedPilot, evidenceModalOpen, setEvidenceModalOpen,
+  setDocketModalData, setContractModalData
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sectorFilter, setSectorFilter] = useState("All");
@@ -810,18 +872,69 @@ function StartupDashboard({
   const [sensorsVal, setSensorsVal] = useState("25 sensors");
   const [notesVal, setNotesVal] = useState("");
 
-  const ramPilots = pilots.filter(p => p.application?.startupId === currentUser.id);
-  const appliedCount = ramPilots.filter(p => p.status === "Applied").length;
-  const runningCount = ramPilots.filter(p => p.status === "Running").length;
-  const completedCount = ramPilots.filter(p => p.status === "Completed").length;
-  const certifiedCount = ramPilots.filter(p => p.status === "Certified").length;
+  const ramPilots = pilots.filter(p => {
+    const apps = getPilotApplications(p);
+    return apps.some(a => a.startupId === currentUser.id) || p.application?.startupId === currentUser.id;
+  });
+  const appliedCount = ramPilots.filter(p => {
+    const myApp = getPilotApplications(p).find(a => a.startupId === currentUser.id);
+    return myApp?.status === "Pending" || (!myApp?.status && p.status === "Applied");
+  }).length;
+  const runningCount = ramPilots.filter(p => p.status === "Running" && (p.application?.startupId === currentUser.id || getPilotApplications(p).find(a => a.startupId === currentUser.id)?.status === "Selected")).length;
+  const completedCount = ramPilots.filter(p => p.status === "Completed" && (p.application?.startupId === currentUser.id || getPilotApplications(p).find(a => a.startupId === currentUser.id)?.status === "Selected")).length;
+  const certifiedCount = ramPilots.filter(p => p.status === "Certified" && (p.application?.startupId === currentUser.id || getPilotApplications(p).find(a => a.startupId === currentUser.id)?.status === "Selected")).length;
+
+  const pilotsWithEscrow = ramPilots.filter(p => p.escrow);
+  const totalEscrowAllocated = pilotsWithEscrow.reduce((sum, p) => sum + (p.escrow?.totalAmount || 0), 0);
+  const totalEscrowDisbursed = pilotsWithEscrow.reduce((sum, p) => sum + (p.escrow?.disbursedAmount || 0), 0);
+
+  const myAdoptions = (procurements || []).filter(pr => (pr.startupId === currentUser.id || pr.startupName === currentUser.startupName));
+  const pendingOffers = myAdoptions.filter(pr => pr.status === "Pending Startup Acceptance");
+
+  const handleAcceptAdoption = (procId) => {
+    setProcurements(prev => prev.map(pr => {
+      if (pr.id === procId) {
+        return { ...pr, status: "Accepted" };
+      }
+      return pr;
+    }));
+    showToast("Adoption Agreement signed! Scaled procurement contract legally executed under GFR 170/173.", "success");
+  };
+
+  const handleDeclineAdoption = (procId) => {
+    setProcurements(prev => prev.map(pr => {
+      if (pr.id === procId) {
+        return { ...pr, status: "Declined" };
+      }
+      return pr;
+    }));
+    showToast("Adoption offer declined.", "info");
+  };
 
   const handleApplySubmit = (e) => {
     e.preventDefault();
-    if (!proposedCost || !proposedScope) { showToast("Please fill in the application details", "error"); return; }
+    const newApp = {
+      id: `app_${currentUser.id}_${Date.now()}`,
+      startupId: currentUser.id,
+      startupName: currentUser.startupName,
+      proposedCost: parseFloat(proposedCost),
+      proposedScope,
+      dpiitNo: currentUser.dpiitNo,
+      appliedAt: new Date().toISOString().split("T")[0],
+      status: "Pending"
+    };
+
     const updatedPilots = pilots.map(p => {
       if (p.id === applyModalOpen.id) {
-        return { ...p, status: "Applied", application: { startupId: currentUser.id, startupName: currentUser.startupName, proposedCost: parseFloat(proposedCost), proposedScope, dpiitNo: currentUser.dpiitNo, appliedAt: new Date().toISOString().split("T")[0] } };
+        const existingApps = getPilotApplications(p);
+        const filtered = existingApps.filter(a => a.startupId !== currentUser.id);
+        const allApps = [...filtered, newApp];
+        return {
+          ...p,
+          status: p.status === "Open" ? "Applied" : p.status,
+          application: p.application || newApp,
+          applications: allApps
+        };
       }
       return p;
     });
@@ -829,6 +942,7 @@ function StartupDashboard({
     setApplyModalOpen(null);
     setProposedCost("");
     setProposedScope("");
+    setTimeline("");
     showToast(`Successfully applied for "${applyModalOpen.title}"!`, "success");
   };
 
@@ -836,7 +950,18 @@ function StartupDashboard({
     e.preventDefault();
     const updatedPilots = pilots.map(p => {
       if (p.id === evidenceModalOpen) {
-        return { ...p, status: "Completed", evidence: { waterLossReduction: waterLossVal, duration: durVal, sensorsDeployed: sensorsVal, summary: notesVal || "Pilot executed successfully matching initial scope specifications.", docs: "Evidence_Report_Telemetry_Log.pdf", submittedAt: new Date().toISOString().split("T")[0] } };
+        return {
+          ...p,
+          status: "Completed",
+          evidence: {
+            waterLossReduction: waterLossVal,
+            duration: durVal,
+            sensorsDeployed: sensorsVal,
+            summary: notesVal || "Pilot executed successfully matching initial scope specifications.",
+            docs: "Evidence_Report_Telemetry_Log.pdf",
+            submittedAt: new Date().toISOString().split("T")[0]
+          }
+        };
       }
       return p;
     });
@@ -851,36 +976,76 @@ function StartupDashboard({
       {/* 1. DASHBOARD VIEW */}
       {currentTab === "dashboard" && (
         <div className="space-y-5 animate-fade-in">
-          {/* Top stats row */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            <StatCard icon={<Clock className="text-slate-500 w-5 h-5" />} label="Applied" value={appliedCount} />
-            <StatCard icon={<TrendingUp className="text-blue-500 w-5 h-5" />} label="Running Pilots" value={runningCount} />
-            <StatCard icon={<AlertTriangle className="text-amber-500 w-5 h-5" />} label="Completed" value={completedCount} />
-            <StatCard icon={<Award className="text-emerald-500 w-5 h-5" />} label="Certified" value={certifiedCount} />
-            <div className="col-span-2 lg:col-span-1 bg-gradient-to-br from-sidebar to-sidebar-darker text-white rounded-lg p-4 flex flex-col justify-between shadow-sm">
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Passport Score</span>
-                <Award className="w-4 h-4 text-sidebar-active" />
-              </div>
-              <div className="mt-1.5 flex items-baseline">
-                <span className="text-3xl font-bold">{currentUser.passportScore}</span>
-                <span className="text-sm font-semibold text-slate-300 ml-1">/100</span>
-              </div>
-              <div className="w-full bg-sidebar-dark rounded-full h-1.5 mt-2">
-                <div className="bg-sidebar-active h-1.5 rounded-full" style={{ width: `${currentUser.passportScore}%` }} />
-              </div>
+          {/* Pending Adoption Offers Banner */}
+          {pendingOffers.length > 0 && (
+            <div className="space-y-3">
+              {pendingOffers.map(offer => (
+                <div key={offer.id} className="bg-gradient-to-r from-emerald-600 via-teal-700 to-sidebar text-white p-4 sm:p-5 rounded-lg shadow-md border border-emerald-400/50 animate-slide-up">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="bg-amber-400 text-amber-950 font-bold text-[10px] uppercase px-2 py-0.5 rounded-full shadow-xs flex items-center gap-1">
+                          <Bell className="w-3 h-3" /> Scaled Adoption Offer Received
+                        </span>
+                        <span className="text-emerald-100 text-[11px] font-mono">{offer.date}</span>
+                      </div>
+                      <h3 className="text-base font-bold text-white">
+                        {offer.adoptingDepartment} has offered a Scaled Procurement Contract!
+                      </h3>
+                      <p className="text-xs text-emerald-100 max-w-2xl leading-relaxed">
+                        Based on your certified precedent <strong>"{offer.pilotTitle}"</strong>, {offer.adoptingOfficialName} ({offer.adoptingDepartment}) wants to adopt your solution fast-tracked under GFR 2017 Rules 170 &amp; 173.
+                      </p>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-emerald-100 pt-1">
+                        <span>Contract Budget: <strong className="text-white font-bold text-sm">₹{offer.scaledBudget?.toLocaleString('en-IN')}</strong></span>
+                        {offer.targetScope && <span>Scope: <strong className="text-white font-medium">{offer.targetScope}</strong></span>}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 self-start md:self-center flex-shrink-0 pt-1 md:pt-0">
+                      <button
+                        type="button"
+                        onClick={() => setContractModalData({ type: "adoption", procurement: offer, pilot: pilots.find(p => p.id === offer.pilotId) })}
+                        className="bg-white/15 hover:bg-white/25 text-white border border-white/25 font-semibold text-xs py-2 px-3 rounded flex items-center gap-1 transition cursor-pointer"
+                      >
+                        <ScrollText className="w-3.5 h-3.5 text-amber-300" /> Review Contract Terms
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAcceptAdoption(offer.id)}
+                        className="bg-white hover:bg-emerald-50 text-emerald-900 font-bold text-xs py-2 px-3.5 rounded shadow-sm flex items-center gap-1.5 transition cursor-pointer"
+                      >
+                        <Check className="w-4 h-4 text-emerald-700" /> Accept &amp; Sign Agreement
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeclineAdoption(offer.id)}
+                        className="bg-white/10 hover:bg-white/20 text-white border border-white/20 font-semibold text-xs py-2 px-3 rounded transition cursor-pointer"
+                      >
+                        <X className="w-4 h-4" /> Decline
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
+          )}
+          {/* Top stats row */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard icon={<Compass className="text-blue-500 w-5 h-5" />} label="Available Pilots" value={pilots.filter(p => p.status === "Open" || p.status === "Applied").length} />
+            <StatCard icon={<Clock className="text-amber-500 w-5 h-5" />} label="My Active / Running" value={runningCount} />
+            <StatCard icon={<Award className="text-sidebar-active w-5 h-5" />} label="Certified Precedents" value={certifiedCount} />
+            <StatCard icon={<ShieldCheck className="text-emerald-500 w-5 h-5" />} label="Scaled Adoptions" value={myAdoptions.filter(pr => pr.status === "Accepted").length} />
           </div>
 
           {/* Pilot status chart + applications table */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             {/* Mini Donut Chart */}
-            <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Pilot Status Overview</h3>
+            <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm flex flex-col justify-between">
+              <h3 className="text-sm font-bold text-slate-800 mb-4">Lifecycle Status Breakdown</h3>
               <MiniDonutChart
                 segments={[
-                  { label: "Applied", value: appliedCount, color: "#6366f1" },
-                  { label: "Running", value: runningCount, color: "#3b82f6" },
+                  { label: "Applied", value: appliedCount, color: "#3b82f6" },
+                  { label: "Running", value: runningCount, color: "#8b5cf6" },
                   { label: "Completed", value: completedCount, color: "#f59e0b" },
                   { label: "Certified", value: certifiedCount, color: "#10b981" },
                 ]}
@@ -914,31 +1079,114 @@ function StartupDashboard({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700">
-                      {ramPilots.map(p => (
-                        <tr key={p.id} className="hover:bg-slate-50/50">
-                          <td className="py-3 pr-4">
-                            <span className="font-semibold block text-slate-800 text-xs">{p.title}</span>
-                            <span className="text-[10px] text-slate-400">{p.sector}</span>
-                          </td>
-                          <td className="py-3 pr-4 text-xs">{p.department}</td>
-                          <td className="py-3 pr-4 font-semibold text-xs">₹{p.application?.proposedCost?.toLocaleString('en-IN')}</td>
-                          <td className="py-3 pr-4"><StatusBadge status={p.status} /></td>
-                          <td className="py-3 text-right">
-                            <div className="flex justify-end items-center gap-2">
-                              {p.status === "Running" && (
-                                <button onClick={() => setEvidenceModalOpen(p.id)} className="bg-amber-500 hover:bg-amber-600 text-white font-semibold py-1 px-2 rounded text-[10px] transition">Upload Evidence</button>
-                              )}
-                              <button onClick={() => setSelectedPilot(p)} className="text-sidebar-active hover:underline text-[10px] font-bold">View</button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                      {ramPilots.map(p => {
+                        const myApp = getPilotApplications(p).find(a => a.startupId === currentUser.id) || p.application;
+                        const isRejected = myApp?.status === "Rejected";
+                        const displayStatus = isRejected ? "Rejected" : p.status;
+                        return (
+                          <tr key={p.id} className="hover:bg-slate-50/50">
+                            <td className="py-3 pr-4">
+                              <span className="font-semibold block text-slate-800 text-xs">{p.title}</span>
+                              <span className="text-[10px] text-slate-400">{p.sector}</span>
+                            </td>
+                            <td className="py-3 pr-4 text-xs">{p.department}</td>
+                            <td className="py-3 pr-4 font-semibold text-xs">₹{myApp?.proposedCost?.toLocaleString('en-IN')}</td>
+                            <td className="py-3 pr-4"><StatusBadge status={displayStatus} /></td>
+                            <td className="py-3 text-right">
+                              <div className="flex justify-end items-center gap-2">
+                                {p.status === "Running" && !isRejected && (
+                                  <button onClick={() => setEvidenceModalOpen(p.id)} className="bg-amber-500 hover:bg-amber-600 text-white font-semibold py-1 px-2 rounded text-[10px] transition">Upload Evidence</button>
+                                )}
+                                {(p.status === "Running" || p.status === "Completed" || p.status === "Certified") && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setContractModalData({ type: "pilot", pilot: p, application: myApp })}
+                                    className="text-emerald-700 hover:text-emerald-900 text-[10px] font-bold flex items-center gap-0.5 cursor-pointer bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200 transition"
+                                  >
+                                    <ScrollText className="w-3 h-3" /> Agreement
+                                  </button>
+                                )}
+                                <button onClick={() => setSelectedPilot(p)} className="text-sidebar-active hover:underline text-[10px] font-bold">View</button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               )}
             </div>
           </div>
+
+          {/* Scaled Government Procurement Contracts Card */}
+          {myAdoptions.length > 0 && (
+            <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm space-y-3">
+              <div className="flex justify-between items-center border-b pb-2">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                    <Handshake className="w-4 h-4 text-emerald-600" /> Scaled Government Procurement Contracts
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Inter-municipal adoption contracts legally executed under GFR 2017 Rules 166, 170 &amp; 173.
+                  </p>
+                </div>
+                <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2 py-0.5 rounded-full border border-emerald-300">
+                  {myAdoptions.filter(pr => pr.status === "Accepted").length} Executed
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                {myAdoptions.map(pr => (
+                  <div key={pr.id} className="p-4 rounded-lg border border-slate-200 bg-slate-50/50 flex flex-col justify-between space-y-3">
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-mono block">Contract Ref: {pr.id.toUpperCase()}</span>
+                          <h4 className="font-bold text-sm text-slate-900">{pr.adoptingDepartment}</h4>
+                          <p className="text-[10px] text-slate-500">Authorized Officer: <strong>{pr.adoptingOfficialName}</strong></p>
+                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                          pr.status === "Accepted" ? "bg-emerald-100 text-emerald-800 border-emerald-200" :
+                          pr.status === "Declined" ? "bg-rose-100 text-rose-800 border-rose-200" :
+                          "bg-amber-100 text-amber-800 border-amber-200"
+                        }`}>
+                          {pr.status === "Accepted" ? "✓ Contract Executed" : pr.status === "Declined" ? "✕ Declined" : "⏳ Pending Acceptance"}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-emerald-700 font-bold">
+                        Contract Value: ₹{pr.scaledBudget?.toLocaleString('en-IN')}
+                      </p>
+
+                      {pr.targetScope && (
+                        <p className="text-[11px] text-slate-600 bg-white p-2 rounded border border-slate-200 line-clamp-2">
+                          <span className="font-semibold text-slate-700">Scope: </span>{pr.targetScope}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-200 flex flex-wrap items-center gap-2 justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setContractModalData({ type: "adoption", procurement: pr, pilot: pilots.find(p => p.id === pr.pilotId) })}
+                        className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[10px] py-1.5 px-3 rounded flex items-center gap-1 shadow-xs transition cursor-pointer"
+                      >
+                        <ScrollText className="w-3.5 h-3.5" /> View Contract Agreement
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDocketModalData({ type: "procurement", procurement: pr, pilot: pilots.find(p => p.id === pr.pilotId) })}
+                        className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-[10px] py-1.5 px-2.5 rounded flex items-center gap-1 shadow-xs transition cursor-pointer"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-sidebar-active" /> CVC Docket
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -961,38 +1209,202 @@ function StartupDashboard({
               <option value="high">₹10,00,000 &amp; above</option>
             </select>
             <div className="flex justify-end items-center">
-              <span className="text-[10px] text-slate-400 font-bold">{pilots.filter(p => p.status === "Open").length} open listings</span>
+              <span className="text-[10px] text-slate-400 font-bold">{pilots.filter(p => p.status === "Open" || p.status === "Applied").length} open listings</span>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {pilots.filter(p => p.status === "Open")
+            {pilots.filter(p => p.status === "Open" || p.status === "Applied")
               .filter(p => searchQuery ? p.title.toLowerCase().includes(searchQuery.toLowerCase()) : true)
               .filter(p => sectorFilter !== "All" ? p.sector === sectorFilter : true)
               .filter(p => { if (budgetFilter === "low") return p.budgetCap < 1000000; if (budgetFilter === "high") return p.budgetCap >= 1000000; return true; })
-              .map(p => (
-                <div key={p.id} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition">
-                  <div>
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="bg-sidebar/10 text-sidebar text-[10px] font-bold px-1.5 py-0.5 rounded">{p.sector}</span>
-                      <span className="text-[10px] font-semibold text-slate-400 flex items-center gap-0.5"><Clock className="w-3 h-3" /> {p.durationDays}d</span>
-                    </div>
-                    <h3 className="text-sm font-bold text-slate-800 line-clamp-1">{p.title}</h3>
-                    <p className="text-[10px] text-sidebar-active font-semibold mt-0.5">{p.department}</p>
-                    <p className="text-[11px] text-slate-500 mt-2 line-clamp-3">{p.description}</p>
-                  </div>
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center">
+              .map(p => {
+                const apps = getPilotApplications(p);
+                const hasApplied = apps.some(a => a.startupId === currentUser.id);
+                return (
+                  <div key={p.id} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition">
                     <div>
-                      <span className="text-[9px] uppercase font-bold text-slate-400 block">Budget Cap</span>
-                      <span className="font-bold text-slate-800 text-sm">₹{p.budgetCap.toLocaleString('en-IN')}</span>
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="bg-sidebar/10 text-sidebar text-[10px] font-bold px-1.5 py-0.5 rounded">{p.sector}</span>
+                        <span className="text-[10px] font-semibold text-slate-400 flex items-center gap-0.5"><Clock className="w-3 h-3" /> {p.durationDays}d</span>
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-800 line-clamp-1">{p.title}</h3>
+                      <p className="text-[10px] text-sidebar-active font-semibold mt-0.5">{p.department}</p>
+                      <p className="text-[11px] text-slate-500 mt-2 line-clamp-3">{p.description}</p>
                     </div>
-                    <div className="flex gap-1.5">
-                      <button onClick={() => setSelectedPilot(p)} className="text-[10px] text-slate-500 hover:text-slate-700 font-bold px-2 py-1">Detail</button>
-                      <button onClick={() => setApplyModalOpen(p)} className="bg-sidebar hover:bg-sidebar-dark text-white font-bold text-[10px] py-1 px-2.5 rounded transition">Apply Now</button>
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center">
+                      <div>
+                        <span className="text-[9px] uppercase font-bold text-slate-400 block">Budget Cap</span>
+                        <span className="font-bold text-slate-800 text-sm">₹{p.budgetCap.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex gap-1.5 items-center">
+                        <button onClick={() => setSelectedPilot(p)} className="text-[10px] text-slate-500 hover:text-slate-700 font-bold px-2 py-1">Detail</button>
+                        {hasApplied ? (
+                          <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[10px] py-1 px-2 rounded flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Applied
+                          </span>
+                        ) : (
+                          <button onClick={() => setApplyModalOpen(p)} className="bg-sidebar hover:bg-sidebar-dark text-white font-bold text-[10px] py-1 px-2.5 rounded transition">Apply Now</button>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
+          </div>
+        </div>
+      )}
+
+      {/* 2.5. PFMS ESCROW & MILESTONE DISBURSEMENTS */}
+      {currentTab === "escrow" && (
+        <div className="space-y-5 animate-fade-in">
+          {/* Header Banner */}
+          <div className="bg-gradient-to-r from-sidebar-darker via-sidebar to-slate-800 text-white p-6 rounded-lg shadow-sm border-b-4 border-sidebar-active flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="bg-sidebar-active/20 text-sidebar-active border border-sidebar-active/40 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <CreditCard className="w-3 h-3" /> PFMS Integrated
+                </span>
+                <span className="text-slate-400 text-xs font-mono">Gateway: PFMS-DIRECT-PAY</span>
+              </div>
+              <h2 className="text-lg font-bold mt-1">PFMS Milestone Escrow &amp; Disbursement Station</h2>
+              <p className="text-xs text-slate-300 max-w-2xl mt-0.5">
+                Government pilot tranches are held in statutory escrow and released within 48 hours of verified milestone delivery, bypassing conventional 9-month invoice delays.
+              </p>
+            </div>
+            <div className="bg-white/10 border border-white/15 px-4 py-2.5 rounded text-left sm:text-right flex-shrink-0">
+              <span className="text-[10px] text-slate-300 uppercase font-bold block">Linked Settlement Account</span>
+              <span className="text-xs font-mono font-bold text-white block">HDFC Bank &bull;&bull;&bull;&bull; 4921</span>
+              <span className="text-[9px] text-emerald-300 font-bold">&check; Direct Benefit Transfer Active</span>
+            </div>
+          </div>
+
+          {/* Stat KPIs */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard
+              icon={<CreditCard className="text-sidebar-active w-5 h-5" />}
+              label="Total Escrow Allocated"
+              value={`₹${totalEscrowAllocated.toLocaleString('en-IN')}`}
+            />
+            <StatCard
+              icon={<CheckCircle className="text-emerald-500 w-5 h-5" />}
+              label="Disbursed into Account"
+              value={`₹${totalEscrowDisbursed.toLocaleString('en-IN')}`}
+            />
+            <StatCard
+              icon={<Clock className="text-blue-500 w-5 h-5" />}
+              label="Disbursement Speed"
+              value="48 Hours"
+            />
+            <StatCard
+              icon={<ShieldCheck className="text-amber-500 w-5 h-5" />}
+              label="Tender Wait Eliminated"
+              value="210 Days Saved"
+            />
+          </div>
+
+          {/* Active Escrow Pilots */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-2">
+              <Receipt className="w-4 h-4 text-sidebar-active" /> Active Pilot Escrow Accounts
+            </h3>
+
+            {pilotsWithEscrow.length === 0 ? (
+              <div className="bg-white p-8 rounded-lg border border-slate-200 text-center text-slate-400">
+                <CreditCard className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                <p className="font-bold text-slate-700 text-sm">No Active Escrow Contracts</p>
+                <p className="text-xs mt-1">Escrow accounts activate automatically once a municipal official awards a pilot.</p>
+              </div>
+            ) : (
+              pilotsWithEscrow.map((p) => {
+                const escrowPct = Math.round((p.escrow.disbursedAmount / p.escrow.totalAmount) * 100);
+                return (
+                  <div key={p.id} className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="bg-sidebar/10 text-sidebar text-[10px] font-bold px-2 py-0.5 rounded">
+                            {p.department}
+                          </span>
+                          <span className="text-slate-400 font-mono text-[10px]">
+                            Virtual A/C: {p.escrow.pfmsAccountRef}
+                          </span>
+                        </div>
+                        <h4 className="font-bold text-slate-800 text-sm">{p.title}</h4>
+                      </div>
+                      <div className="text-left sm:text-right">
+                        <span className="text-[10px] text-slate-400 font-bold block">Escrow Capital Released</span>
+                        <span className="font-bold text-emerald-700 text-sm">
+                          ₹{p.escrow.disbursedAmount.toLocaleString('en-IN')} / ₹{p.escrow.totalAmount.toLocaleString('en-IN')} ({escrowPct}%)
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] font-semibold text-slate-500">
+                        <span>Disbursement Progress</span>
+                        <span>{escrowPct}% Released</span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                        <div
+                          className="bg-emerald-600 h-2.5 rounded-full transition-all duration-500"
+                          style={{ width: `${escrowPct}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* 3 Milestones Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+                      {p.escrow.milestones.map((m) => (
+                        <div
+                          key={m.id}
+                          className={`p-3.5 rounded-lg border transition flex flex-col justify-between space-y-3 ${
+                            m.status === "Disbursed"
+                              ? "bg-emerald-50/40 border-emerald-200"
+                              : m.status === "Ready for Review"
+                              ? "bg-blue-50/40 border-blue-200"
+                              : "bg-slate-50 border-slate-200 opacity-85"
+                          }`}
+                        >
+                          <div>
+                            <div className="flex justify-between items-start mb-1.5">
+                              <span className="font-bold text-xs text-slate-800 leading-snug">{m.title}</span>
+                              <span className="text-[10px] font-bold text-slate-400 font-mono">{m.percentage}%</span>
+                            </div>
+                            <p className="text-emerald-800 font-bold text-sm">₹{m.amount.toLocaleString('en-IN')}</p>
+                            <p className="text-slate-600 text-[10px] mt-1.5 leading-relaxed">{m.deliverable}</p>
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-200/60">
+                            {m.status === "Disbursed" ? (
+                              <div className="space-y-1">
+                                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 w-fit">
+                                  <Check className="w-3 h-3" /> Disbursed via PFMS
+                                </span>
+                                <p className="text-[9px] text-slate-400 font-mono truncate">Ref: {m.txRef}</p>
+                                <p className="text-[9px] text-slate-400 font-mono">Date: {m.disbursedAt}</p>
+                              </div>
+                            ) : m.status === "Ready for Review" ? (
+                              <div className="space-y-1">
+                                <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 w-fit">
+                                  <Clock className="w-3 h-3" /> Under Municipal Review
+                                </span>
+                                <p className="text-[9px] text-slate-500 italic">Sponsoring engineer is reviewing telemetry for release.</p>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-[10px] flex items-center gap-1 font-medium">
+                                <Lock className="w-3 h-3" /> Locked until prior milestone
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       )}
@@ -1057,9 +1469,18 @@ function StartupDashboard({
                       <p className="text-[11px] text-slate-500 italic mt-0.5">"{p.verification?.notes}"</p>
                       <p className="text-[10px] text-slate-400 font-bold mt-1">Signed: {p.verification?.verifierName}</p>
                     </div>
-                    <div className="bg-white p-2.5 rounded border border-slate-200 flex justify-between items-center text-[10px]">
+                    <div className="bg-white p-2.5 rounded border border-slate-200 flex flex-wrap justify-between items-center text-[10px] gap-2">
                       <span className="font-mono text-slate-400">Hash: SHA256-{p.id}-CERT-X992</span>
-                      <span className="text-emerald-700 font-bold flex items-center gap-0.5"><ShieldCheck className="w-3.5 h-3.5" /> GFR COMPLIANT</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDocketModalData({ type: "pilot", pilot: p })}
+                          className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-[10px] py-1 px-2.5 rounded flex items-center gap-1 shadow-xs transition cursor-pointer"
+                        >
+                          <FileText className="w-3 h-3 text-sidebar-active" /> CVC Audit Defense Docket
+                        </button>
+                        <span className="text-emerald-700 font-bold flex items-center gap-0.5"><ShieldCheck className="w-3.5 h-3.5" /> GFR COMPLIANT</span>
+                      </div>
                     </div>
                   </div>
                 ))
@@ -1178,7 +1599,8 @@ function StartupDashboard({
    ========================================================== */
 function OfficialDashboard({
   currentTab, setCurrentTab, currentUser, pilots, setPilots, procurements, setProcurements,
-  showToast, selectedPilot, setSelectedPilot, adoptionModalOpen, setAdoptionModalOpen, sectorRules
+  showToast, selectedPilot, setSelectedPilot, adoptionModalOpen, setAdoptionModalOpen, sectorRules,
+  setDocketModalData, setContractModalData
 }) {
   const [newTitle, setNewTitle] = useState("");
   const [newBudget, setNewBudget] = useState("");
@@ -1191,6 +1613,7 @@ function OfficialDashboard({
   const [browseSector, setBrowseSector] = useState("All");
   const [procureDept, setProcureDept] = useState(currentUser.department);
   const [procureBudget, setProcureBudget] = useState("");
+  const [adoptionScope, setAdoptionScope] = useState("");
 
   const myPilots = pilots.filter(p => p.sponsoringOfficialId === currentUser.id);
   const myProcurements = procurements.filter(pr => pr.adoptingOfficialId === currentUser.id);
@@ -1203,7 +1626,7 @@ function OfficialDashboard({
       sponsoringOfficialId: currentUser.id, sponsoringOfficialName: currentUser.name,
       budgetCap: parseFloat(newBudget), durationDays: parseInt(newDuration),
       sector: newSector, description: newDesc, status: "Open",
-      application: null, evidence: null, verification: null
+      application: null, applications: [], evidence: null, verification: null
     };
     setPilots(prev => [newPilot, ...prev]);
     setNewTitle(""); setNewBudget(""); setNewDuration(""); setNewDesc("");
@@ -1212,8 +1635,99 @@ function OfficialDashboard({
   };
 
   const handleSelectStartup = (pilotId, startupId) => {
-    setPilots(pilots.map(p => p.id === pilotId ? { ...p, status: "Running" } : p));
-    showToast("Startup selected! Pilot is now in 'Running' status.", "success");
+    let selectedName = "Startup";
+    setPilots(prev => prev.map(p => {
+      if (p.id === pilotId) {
+        const apps = getPilotApplications(p);
+        const target = apps.find(a => a.startupId === startupId);
+        if (target) selectedName = target.startupName;
+        const updatedApps = apps.map(a => {
+          if (a.startupId === startupId) {
+            return { ...a, status: "Selected" };
+          }
+          if (a.status === "Pending" || !a.status) {
+            return { ...a, status: "Rejected" };
+          }
+          return a;
+        });
+        const selectedApp = updatedApps.find(a => a.startupId === startupId) || target;
+        const escrowData = createPilotEscrow(selectedApp?.proposedCost || p.budgetCap);
+        return {
+          ...p,
+          status: "Running",
+          application: { ...(selectedApp || {}), status: "Selected" },
+          applications: updatedApps,
+          escrow: escrowData
+        };
+      }
+      return p;
+    }));
+    showToast(`"${selectedName}" selected! Pilot is now in 'Running' status with PFMS Escrow initialized.`, "success");
+  };
+
+  const handleDisburseMilestone = (pilotId, milestoneId) => {
+    let disbursedAmount = 0;
+    let startupName = "Startup";
+    setPilots(prev => prev.map(p => {
+      if (p.id === pilotId && p.escrow) {
+        startupName = p.application?.startupName || "Startup";
+        const currentIdx = p.escrow.milestones.findIndex(m => m.id === milestoneId);
+        const updatedMilestones = p.escrow.milestones.map((m, idx) => {
+          if (m.id === milestoneId) {
+            disbursedAmount = m.amount;
+            return {
+              ...m,
+              status: "Disbursed",
+              disbursedAt: new Date().toISOString().split("T")[0],
+              txRef: `TXN-PFMS-${Math.floor(10000 + Math.random() * 90000)}`
+            };
+          }
+          if (idx === currentIdx + 1 && m.status === "Pending") {
+            return { ...m, status: "Ready for Review" };
+          }
+          return m;
+        });
+        const totalDisbursed = updatedMilestones.filter(m => m.status === "Disbursed").reduce((sum, m) => sum + m.amount, 0);
+        return {
+          ...p,
+          escrow: {
+            ...p.escrow,
+            disbursedAmount: totalDisbursed,
+            milestones: updatedMilestones
+          }
+        };
+      }
+      return p;
+    }));
+    showToast(`PFMS Disbursement of ₹${disbursedAmount.toLocaleString('en-IN')} approved for ${startupName}!`, "success");
+  };
+
+  const handleRejectStartup = (pilotId, startupId) => {
+    let rejectedName = "Startup";
+    setPilots(prev => prev.map(p => {
+      if (p.id === pilotId) {
+        const apps = getPilotApplications(p);
+        const target = apps.find(a => a.startupId === startupId);
+        if (target) rejectedName = target.startupName;
+        const updatedApps = apps.map(a => {
+          if (a.startupId === startupId) {
+            return { ...a, status: "Rejected" };
+          }
+          return a;
+        });
+        const hasPending = updatedApps.some(a => a.status === "Pending" || !a.status);
+        const hasSelected = updatedApps.some(a => a.status === "Selected");
+        const nextStatus = hasSelected ? "Running" : (hasPending ? "Applied" : "Open");
+        return {
+          ...p,
+          status: nextStatus,
+          application: p.application?.startupId === startupId ? null : p.application,
+          applications: updatedApps
+        };
+      }
+      return p;
+    }));
+    showToast(`Application from "${rejectedName}" rejected.`, "info");
   };
 
   const handleFeedbackSubmit = (e) => {
@@ -1227,18 +1741,28 @@ function OfficialDashboard({
     e.preventDefault();
     if (!procureBudget) { showToast("Please enter the scaled procurement budget", "error"); return; }
     const targetPilot = pilots.find(p => p.id === adoptionModalOpen);
+    const targetStartupId = targetPilot.application?.startupId || "ram";
+    const targetStartupName = targetPilot.application?.startupName || "AquaSense Technologies";
     const newProc = {
-      id: `pr_${Date.now()}`, pilotId: targetPilot.id, pilotTitle: targetPilot.title,
-      sponsoringDepartment: targetPilot.department, adoptingOfficialId: currentUser.id,
-      adoptingOfficialName: currentUser.name, adoptingDepartment: procureDept,
+      id: `pr_${Date.now()}`,
+      pilotId: targetPilot.id,
+      pilotTitle: targetPilot.title,
+      startupId: targetStartupId,
+      startupName: targetStartupName,
+      sponsoringDepartment: targetPilot.department,
+      adoptingOfficialId: currentUser.id,
+      adoptingOfficialName: currentUser.name,
+      adoptingDepartment: procureDept,
       scaledBudget: parseFloat(procureBudget),
-      justification: `Fast-track scaled adoption approved for startup "${targetPilot.application.startupName}" based on certified pilot precedent PP-${targetPilot.application.dpiitNo}-2026. This procurement is executed with regulatory exemptions under General Financial Rules (GFR) 2017 Rule 170 (EMD exemption) and Rule 173 (relaxation of turnover & experience parameters for verified precedents).`,
+      targetScope: adoptionScope || `City-wide deployment across ${targetPilot.sector} infrastructure in ${procureDept}.`,
+      status: "Pending Startup Acceptance",
+      justification: `Fast-track scaled adoption offer issued to startup "${targetStartupName}" based on certified pilot precedent PP-${targetPilot.application?.dpiitNo || "DPIIT98372"}-2026. This procurement is executed with regulatory exemptions under General Financial Rules (GFR) 2017 Rule 170 (EMD exemption) and Rule 173 (relaxation of turnover & experience parameters for verified precedents).`,
       date: new Date().toISOString().split("T")[0]
     };
     setProcurements(prev => [newProc, ...prev]);
-    setAdoptionModalOpen(null); setProcureBudget("");
+    setAdoptionModalOpen(null); setProcureBudget(""); setAdoptionScope("");
     setCurrentTab("procurement-history");
-    showToast("Scaled Procurement completed! Audit trail compiled.", "success");
+    showToast(`Official Adoption Offer sent to ${targetStartupName}! Awaiting startup acceptance.`, "info");
   };
 
   return (
@@ -1247,60 +1771,263 @@ function OfficialDashboard({
       {currentTab === "dashboard" && (
         <div className="space-y-5 animate-fade-in">
           <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
               <div>
                 <h2 className="text-sm font-bold text-slate-800">Pilots Sponsored by {currentUser.department}</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Manage pilot listings, evaluate applicant proposals, and select or reject startups.</p>
               </div>
-              <button onClick={() => setCurrentTab("post-pilot")} className="bg-sidebar-active hover:bg-emerald-600 text-white font-semibold py-1.5 px-3 rounded text-xs flex items-center gap-1 transition">
-                <Plus className="w-3 h-3" /> Post a Pilot
+              <button onClick={() => setCurrentTab("post-pilot")} className="bg-sidebar-active hover:bg-emerald-600 text-white font-semibold py-1.5 px-3 rounded text-xs flex items-center gap-1 transition self-start sm:self-auto shadow-sm">
+                <Plus className="w-3.5 h-3.5" /> Post a Pilot
               </button>
             </div>
+
             {myPilots.length === 0 ? (
-              <div className="text-center py-8 text-slate-400">
+              <div className="text-center py-10 text-slate-400">
                 <Briefcase className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-                <p className="font-semibold text-sm">No sponsored pilots.</p>
-                <p className="text-[11px]">Click "Post a Pilot" to list your first opportunity.</p>
+                <p className="font-semibold text-sm text-slate-600">No sponsored pilots found.</p>
+                <p className="text-[11px] text-slate-400 mt-1">Click "Post a Pilot" above to publish your first civic challenge opportunity.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-[10px] text-slate-500 uppercase tracking-wider text-left">
-                      <th className="pb-2 pr-4 font-semibold">Pilot Opportunity</th>
-                      <th className="pb-2 pr-4 font-semibold">Budget Cap</th>
-                      <th className="pb-2 pr-4 font-semibold">Applicant</th>
-                      <th className="pb-2 pr-4 font-semibold">Status</th>
-                      <th className="pb-2 text-right font-semibold">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700">
-                    {myPilots.map(p => (
-                      <tr key={p.id} className="hover:bg-slate-50/50">
-                        <td className="py-3 pr-4">
-                          <span className="font-semibold block text-slate-800 text-xs">{p.title}</span>
-                          <span className="text-[10px] text-slate-400">{p.durationDays} Days</span>
-                        </td>
-                        <td className="py-3 pr-4 font-semibold text-xs">₹{p.budgetCap.toLocaleString('en-IN')}</td>
-                        <td className="py-3 pr-4">
-                          {p.application ? (
-                            <div>
-                              <span className="font-semibold text-sidebar block text-xs">{p.application.startupName}</span>
-                              <span className="text-[10px] text-slate-400">₹{p.application.proposedCost.toLocaleString('en-IN')}</span>
-                            </div>
-                          ) : <span className="text-slate-400 text-[10px] italic">None yet</span>}
-                        </td>
-                        <td className="py-3 pr-4"><StatusBadge status={p.status} /></td>
-                        <td className="py-3 text-right">
-                          <div className="flex justify-end gap-1.5 items-center">
-                            {p.status === "Applied" && <button onClick={() => handleSelectStartup(p.id, p.application.startupId)} className="bg-sidebar hover:bg-sidebar-dark text-white font-semibold text-[10px] py-1 px-2 rounded transition">Select</button>}
-                            {p.status === "Completed" && !p.evidence?.sponsorFeedback && <button onClick={() => { setFeedbackPilotId(p.id); setSponsorNotes(""); }} className="bg-amber-500 hover:bg-amber-600 text-white font-semibold text-[10px] py-1 px-2 rounded">Feedback</button>}
-                            <button onClick={() => setSelectedPilot(p)} className="text-sidebar-active hover:underline text-[10px] font-bold">Details</button>
+              <div className="space-y-4">
+                {myPilots.map(p => {
+                  const apps = getPilotApplications(p);
+                  const pendingCount = apps.filter(a => a.status === "Pending" || !a.status).length;
+                  return (
+                    <div key={p.id} className="border border-slate-200 rounded-lg overflow-hidden shadow-sm bg-white hover:border-slate-300 transition">
+                      {/* Pilot Opportunity Bar */}
+                      <div className="p-4 bg-slate-50/70 border-b border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge status={p.status} />
+                            <span className="bg-slate-200/80 text-slate-700 text-[10px] font-semibold px-2 py-0.5 rounded">{p.sector}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">Ref: {p.id}</span>
                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          <h3 className="text-sm font-bold text-slate-800">{p.title}</h3>
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 pt-0.5">
+                            <span>Budget Cap: <strong className="text-slate-800 font-semibold">₹{p.budgetCap.toLocaleString('en-IN')}</strong></span>
+                            <span>Duration: <strong className="text-slate-700 font-medium">{p.durationDays} Days</strong></span>
+                            <span>Applicants: <strong className="text-sidebar font-semibold">{apps.length}</strong></span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-start md:self-center">
+                          {p.status === "Completed" && !p.evidence?.sponsorFeedback && (
+                            <button
+                              onClick={() => { setFeedbackPilotId(p.id); setSponsorNotes(""); }}
+                              className="bg-amber-500 hover:bg-amber-600 text-white font-semibold text-[11px] py-1.5 px-3 rounded shadow-sm transition"
+                            >
+                              Feedback
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setSelectedPilot(p)}
+                            className="border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-[11px] py-1.5 px-3 rounded transition shadow-2xs"
+                          >
+                            Details
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Under the pilot opportunity: List of Applicants */}
+                      <div className="p-4 bg-white">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                            <Users className="w-3.5 h-3.5 text-sidebar" />
+                            List of Applicants ({apps.length})
+                          </h4>
+                          {pendingCount > 0 && (
+                            <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                              {pendingCount} Pending Review
+                            </span>
+                          )}
+                        </div>
+
+                        {apps.length === 0 ? (
+                          <div className="p-4 rounded border border-dashed border-slate-200 text-center text-slate-400 text-xs bg-slate-50/40">
+                            <p className="font-medium text-slate-500">No applicants yet</p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">When startups submit proposals, they will appear here under this opportunity.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2.5">
+                            {apps.map((app, idx) => {
+                              const isPending = !app.status || app.status === "Pending";
+                              const isSelected = app.status === "Selected";
+                              const isRejected = app.status === "Rejected";
+
+                              return (
+                                <div
+                                  key={app.id || idx}
+                                  className={`p-3.5 rounded-lg border transition ${
+                                    isSelected
+                                      ? "bg-emerald-50/40 border-emerald-300 ring-1 ring-emerald-200"
+                                      : isRejected
+                                      ? "bg-slate-50/70 border-slate-200 opacity-75"
+                                      : "bg-white border-slate-200 hover:border-slate-300 shadow-sm"
+                                  }`}
+                                >
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    {/* Applicant Details */}
+                                    <div className="space-y-1 flex-1">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="font-bold text-slate-800 text-xs">{app.startupName}</span>
+                                        <span className="bg-blue-50 text-blue-700 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border border-blue-200">
+                                          {app.dpiitNo || "DPIIT"}
+                                        </span>
+                                        {isSelected && (
+                                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1">
+                                            <Check className="w-3 h-3" /> Selected Partner
+                                          </span>
+                                        )}
+                                        {isRejected && (
+                                          <span className="bg-rose-100 text-rose-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-rose-300 flex items-center gap-1">
+                                            <X className="w-3 h-3" /> Rejected
+                                          </span>
+                                        )}
+                                        {isPending && (
+                                          <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-300 flex items-center gap-1">
+                                            <Clock className="w-3 h-3" /> Under Review
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-slate-600">
+                                        <span>
+                                          Proposed Cost: <strong className="text-slate-800 font-semibold">₹{app.proposedCost?.toLocaleString('en-IN')}</strong>
+                                          {p.budgetCap && (
+                                            <span className="text-[10px] text-slate-400 ml-1">
+                                              ({Math.round(((p.budgetCap - app.proposedCost) / p.budgetCap) * 100)}% under budget cap)
+                                            </span>
+                                          )}
+                                        </span>
+                                        {app.appliedAt && (
+                                          <span className="text-slate-400">
+                                            Applied: <span className="text-slate-600 font-medium">{app.appliedAt}</span>
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {app.proposedScope && (
+                                        <p className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded border border-slate-100 mt-1 leading-relaxed">
+                                          <span className="font-semibold text-slate-700">Proposed Scope: </span>{app.proposedScope}
+                                        </p>
+                                      )}
+                                    </div>
+
+                                    {/* Action Buttons: Select and Reject next to each other */}
+                                    <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
+                                      {isPending && (p.status === "Applied" || p.status === "Open") && (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSelectStartup(p.id, app.startupId)}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] py-1.5 px-3 rounded shadow-sm flex items-center gap-1 transition"
+                                            title="Select this startup to award the pilot"
+                                          >
+                                            <Check className="w-3 h-3" /> Select
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRejectStartup(p.id, app.startupId)}
+                                            className="bg-white hover:bg-rose-50 text-rose-600 border border-rose-300 font-semibold text-[11px] py-1.5 px-3 rounded flex items-center gap-1 transition"
+                                            title="Reject this proposal"
+                                          >
+                                            <X className="w-3 h-3" /> Reject
+                                          </button>
+                                        </>
+                                      )}
+
+                                      {isSelected && (
+                                        <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
+                                          Active Partner
+                                        </span>
+                                      )}
+
+                                      {isRejected && (
+                                        <span className="text-[10px] font-semibold text-rose-600 bg-rose-50 px-2.5 py-1 rounded border border-rose-200">
+                                          Declined
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* PFMS Milestone Escrow Controls */}
+                      {p.escrow && (
+                        <div className="p-4 bg-slate-50 border-t border-slate-200 space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div>
+                              <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                                PFMS Milestone Escrow Controls
+                              </h4>
+                              <p className="text-[10px] text-slate-500 font-mono">
+                                Virtual Account: {p.escrow.pfmsAccountRef} &bull; Vendor: {p.application?.startupName || "Selected Startup"}
+                              </p>
+                            </div>
+                            <div className="text-left sm:text-right">
+                              <span className="text-[10px] text-slate-400 font-bold block">Capital Disbursed</span>
+                              <span className="text-xs font-bold text-emerald-700">
+                                ₹{p.escrow.disbursedAmount.toLocaleString('en-IN')} / ₹{p.escrow.totalAmount.toLocaleString('en-IN')} ({Math.round((p.escrow.disbursedAmount / p.escrow.totalAmount) * 100)}%)
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Progress Bar */}
+                          <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                            <div
+                              className="bg-emerald-600 h-2 transition-all duration-300 rounded-full"
+                              style={{ width: `${Math.round((p.escrow.disbursedAmount / p.escrow.totalAmount) * 100)}%` }}
+                            />
+                          </div>
+
+                          {/* Milestones grid */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
+                            {p.escrow.milestones.map((m) => (
+                              <div key={m.id} className="bg-white p-3 rounded border border-slate-200 flex flex-col justify-between space-y-2 text-[11px]">
+                                <div>
+                                  <div className="flex justify-between items-start gap-1 mb-1">
+                                    <span className="font-bold text-slate-800 leading-tight">{m.title}</span>
+                                    <span className="text-slate-400 font-bold text-[10px]">{m.percentage}%</span>
+                                  </div>
+                                  <p className="text-emerald-700 font-bold text-xs">₹{m.amount.toLocaleString('en-IN')}</p>
+                                  <p className="text-slate-500 text-[10px] mt-1 leading-snug">{m.deliverable}</p>
+                                </div>
+
+                                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                                  {m.status === "Disbursed" ? (
+                                    <div className="space-y-0.5">
+                                      <span className="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1">
+                                        <Check className="w-3 h-3" /> Disbursed via PFMS
+                                      </span>
+                                      <span className="text-[9px] text-slate-400 font-mono block">{m.txRef}</span>
+                                    </div>
+                                  ) : m.status === "Ready for Review" ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDisburseMilestone(p.id, m.id)}
+                                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] py-1.5 px-2 rounded flex items-center justify-center gap-1 shadow-xs transition cursor-pointer"
+                                    >
+                                      <CreditCard className="w-3 h-3" /> Approve &amp; Disburse
+                                    </button>
+                                  ) : (
+                                    <span className="text-slate-400 text-[10px] flex items-center gap-1">
+                                      <Lock className="w-3 h-3" /> Awaiting Prior Tranche
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1309,59 +2036,66 @@ function OfficialDashboard({
 
       {/* 2. POST A PILOT */}
       {currentTab === "post-pilot" && (
-        <div className="max-w-2xl mx-auto bg-white p-5 rounded-lg border border-slate-200 shadow-sm animate-fade-in">
-          <h2 className="text-sm font-bold text-slate-800 mb-4">Post a Pilot Opportunity</h2>
-          <form onSubmit={handlePostPilot} className="space-y-3">
+        <div className="max-w-2xl mx-auto bg-white p-6 rounded-lg border border-slate-200 shadow-sm animate-fade-in">
+          <h2 className="text-base font-bold text-slate-800 mb-1">Post a New Municipal Pilot Challenge</h2>
+          <p className="text-xs text-slate-500 mb-5">Define a measurable public problem with clear criteria for startup testing.</p>
+
+          <form onSubmit={handlePostPilot} className="space-y-4">
             <div>
-              <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Title</label>
-              <input type="text" required placeholder="e.g. Acoustic Leak Detection in Pune Ward 12" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-1.5 text-sm focus:ring-1 focus:ring-sidebar-active" />
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Challenge Title</label>
+              <input type="text" required placeholder="e.g. AI Leak Detection System - Ward 4" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-sidebar-active" />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Budget Cap (INR)</label>
-                <input type="number" required placeholder="e.g. 800000" value={newBudget} onChange={(e) => setNewBudget(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-1.5 text-sm" />
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Budget Allocation (INR)</label>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-2 text-slate-400 font-bold text-xs">₹</span>
+                  <input type="number" required placeholder="500000" value={newBudget} onChange={(e) => setNewBudget(e.target.value)} className="w-full pl-6 pr-3 py-2 border border-slate-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-sidebar-active" />
+                </div>
               </div>
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Duration (Days)</label>
-                <input type="number" required placeholder="e.g. 90" value={newDuration} onChange={(e) => setNewDuration(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-1.5 text-sm" />
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Pilot Period (Days)</label>
+                <input type="number" required placeholder="60" value={newDuration} onChange={(e) => setNewDuration(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-sidebar-active" />
               </div>
             </div>
+
             <div>
-              <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Sector</label>
-              <select value={newSector} onChange={(e) => setNewSector(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-1.5 text-sm focus:ring-1 focus:ring-sidebar-active">
-                {Object.keys(sectorRules).map(sec => <option key={sec} value={sec}>{sec}</option>)}
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Civic Domain / Sector</label>
+              <select value={newSector} onChange={(e) => setNewSector(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-sidebar-active">
+                {Object.keys(sectorRules).map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
+
             <div>
-              <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Problem Description &amp; Scope</label>
-              <textarea required rows={3} placeholder="Detail the challenge, goals, deployment criteria..." value={newDesc} onChange={(e) => setNewDesc(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-1.5 text-sm focus:outline-none" />
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Problem Statement &amp; Scope</label>
+              <textarea rows={4} placeholder="Describe the physical problem, deployment area, and success outcomes..." value={newDesc} onChange={(e) => setNewDesc(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-sidebar-active" />
             </div>
-            <button type="submit" className="w-full bg-sidebar hover:bg-sidebar-dark text-white font-bold py-2 rounded shadow-sm transition text-sm">Post Opportunity</button>
+
+            <div className="pt-2 flex justify-end">
+              <button type="submit" className="bg-sidebar hover:bg-sidebar-dark text-white font-semibold text-xs py-2 px-4 rounded shadow-sm transition">Post Opportunity</button>
+            </div>
           </form>
         </div>
       )}
 
-      {/* 3. BROWSE CERTIFIED */}
+      {/* 3. BROWSE CERTIFIED PILOTS */}
       {currentTab === "browse-certified" && (
         <div className="space-y-4 animate-fade-in">
-          <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
-              <input type="text" placeholder="Search technologies or startups..." value={browseQuery} onChange={(e) => setBrowseQuery(e.target.value)} className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-sidebar-active" />
+          <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+              <input type="text" placeholder="Search by technology, keyword, or startup..." value={browseQuery} onChange={(e) => setBrowseQuery(e.target.value)} className="w-full pl-9 pr-3 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-sidebar-active" />
             </div>
-            <select value={browseSector} onChange={(e) => setBrowseSector(e.target.value)} className="border border-slate-200 rounded px-2 py-2 text-xs">
-              <option value="All">All Sectors</option>
-              <option value="Water & Sanitation">Water &amp; Sanitation</option>
-              <option value="Energy & Cleantech">Energy &amp; Cleantech</option>
+            <select value={browseSector} onChange={(e) => setBrowseSector(e.target.value)} className="border border-slate-200 rounded px-3 py-1.5 text-xs bg-white text-slate-600 focus:outline-none focus:ring-1 focus:ring-sidebar-active">
+              <option value="All">All Domains</option>
+              {Object.keys(sectorRules).map(s => <option key={s} value={s}>{s}</option>)}
             </select>
-            <div className="flex justify-end items-center">
-              <span className="text-[10px] text-slate-400 font-bold">{pilots.filter(p => p.status === "Certified").length} Certified Precedents</span>
-            </div>
           </div>
 
           <div className="space-y-3">
             {pilots.filter(p => p.status === "Certified")
-              .filter(p => browseQuery ? (p.title.toLowerCase().includes(browseQuery.toLowerCase()) || p.application.startupName.toLowerCase().includes(browseQuery.toLowerCase())) : true)
+              .filter(p => browseQuery ? (p.title.toLowerCase().includes(browseQuery.toLowerCase()) || p.application?.startupName?.toLowerCase().includes(browseQuery.toLowerCase())) : true)
               .filter(p => browseSector !== "All" ? p.sector === browseSector : true)
               .map(p => (
                 <div key={p.id} className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm grid grid-cols-1 lg:grid-cols-4 gap-4 items-center">
@@ -1371,13 +2105,30 @@ function OfficialDashboard({
                       <span className="text-[10px] font-semibold text-slate-400">{p.sector}</span>
                     </div>
                     <h3 className="text-sm font-bold text-slate-800">{p.title}</h3>
-                    <p className="text-[10px] text-slate-500">By <strong className="text-sidebar">{p.application.startupName}</strong> at {p.department}</p>
-                    <p className="text-[10px] text-slate-500 italic line-clamp-2">"{p.verification.notes}"</p>
+                    <p className="text-[10px] text-slate-500">By <strong className="text-sidebar">{p.application?.startupName}</strong> at {p.department}</p>
+                    <p className="text-[10px] text-slate-500 italic line-clamp-2">"{p.verification?.notes}"</p>
+
+                    {/* Shared adoption info */}
+                    {procurements.filter(pr => pr.pilotId === p.id && pr.status === "Accepted").map(pr => (
+                      <div key={pr.id} className="mt-1.5 p-2 bg-emerald-50/80 border border-emerald-200 rounded flex flex-wrap items-center justify-between gap-1.5 text-[10px]">
+                        <span className="text-slate-700 font-medium flex items-center gap-1">
+                          <Handshake className="w-3.5 h-3.5 text-emerald-700" />
+                          Adopted by <strong>{pr.adoptingDepartment}</strong> (&thinsp;₹{pr.scaledBudget?.toLocaleString('en-IN')}&thinsp;)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setContractModalData({ type: "adoption", procurement: pr, pilot: p })}
+                          className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[9px] py-1 px-2 rounded flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                        >
+                          <ScrollText className="w-3 h-3" /> Inspect Contract
+                        </button>
+                      </div>
+                    ))}
                   </div>
                   <div className="bg-slate-50 p-3 rounded border border-slate-200 space-y-1">
                     <p className="text-[9px] font-bold text-slate-400 uppercase">Audited Outcome</p>
-                    <p className="text-xs font-bold text-emerald-800">{p.evidence.waterLossReduction}</p>
-                    <p className="text-[10px] text-slate-500">Duration: {p.evidence.duration} | Score: {p.verification.score}/100</p>
+                    <p className="text-xs font-bold text-emerald-800">{p.evidence?.waterLossReduction}</p>
+                    <p className="text-[10px] text-slate-500">Duration: {p.evidence?.duration} | Score: {p.verification?.score}/100</p>
                   </div>
                   <div className="flex lg:flex-col gap-2 justify-end">
                     <button onClick={() => setSelectedPilot(p)} className="border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold text-[10px] py-1.5 px-2.5 rounded w-full text-center transition">View Log</button>
@@ -1407,7 +2158,8 @@ function OfficialDashboard({
                       <th className="pb-2 pr-4 font-semibold">Reference</th>
                       <th className="pb-2 pr-4 font-semibold">Cost</th>
                       <th className="pb-2 pr-4 font-semibold">Startup</th>
-                      <th className="pb-2 font-semibold">Status</th>
+                      <th className="pb-2 pr-4 font-semibold">Status</th>
+                      <th className="pb-2 font-semibold">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -1416,10 +2168,30 @@ function OfficialDashboard({
                         <td className="py-2.5 pr-4"><span className="font-semibold text-slate-800 block">{p.title}</span><span className="text-[9px] text-slate-400 font-mono">ID: {p.id}</span></td>
                         <td className="py-2.5 pr-4 font-semibold">₹{p.application?.proposedCost?.toLocaleString('en-IN') || p.budgetCap.toLocaleString('en-IN')}</td>
                         <td className="py-2.5 pr-4 font-medium text-sidebar">{p.application?.startupName || "Unassigned"}</td>
-                        <td className="py-2.5">
+                        <td className="py-2.5 pr-4">
                           <span className={`text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded ${p.status === "Certified" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500"}`}>
                             {p.status === "Certified" ? "Verified" : p.status}
                           </span>
+                        </td>
+                        <td className="py-2.5">
+                          <div className="flex items-center gap-1.5">
+                            {(p.status === "Running" || p.status === "Completed" || p.status === "Certified") && (
+                              <button
+                                type="button"
+                                onClick={() => setContractModalData({ type: "pilot", pilot: p, application: p.application })}
+                                className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[10px] py-1 px-2.5 rounded flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                              >
+                                <ScrollText className="w-3 h-3" /> Agreement
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setDocketModalData({ type: "pilot", pilot: p })}
+                              className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-[10px] py-1 px-2.5 rounded flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                            >
+                              <FileText className="w-3 h-3 text-sidebar-active" /> Audit Memo
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1430,27 +2202,151 @@ function OfficialDashboard({
           </div>
 
           <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
-            <h3 className="text-xs font-bold text-slate-800 mb-3 border-b pb-2 uppercase tracking-wider">Fast-Track Adoptions Ledger</h3>
+            <h3 className="text-xs font-bold text-slate-800 mb-3 border-b pb-2 uppercase tracking-wider">Fast-Track Scaled Adoptions Ledger</h3>
             {myProcurements.length === 0 ? <p className="text-xs text-slate-400 italic">No scaled adoptions recorded yet.</p> : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-xs">
                   <thead>
                     <tr className="border-b border-slate-200 text-[10px] text-slate-500 uppercase tracking-wider text-left">
-                      <th className="pb-2 pr-4 font-semibold">Procurement</th>
+                      <th className="pb-2 pr-4 font-semibold">Procurement / Pilot</th>
+                      <th className="pb-2 pr-4 font-semibold">Vendor Startup</th>
                       <th className="pb-2 pr-4 font-semibold">Budget</th>
-                      <th className="pb-2 pr-4 font-semibold">Source Dept</th>
-                      <th className="pb-2 font-semibold">GFR Code</th>
+                      <th className="pb-2 pr-4 font-semibold">Adoption Status</th>
+                      <th className="pb-2 pr-4 font-semibold">GFR Code</th>
+                      <th className="pb-2 font-semibold">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
                     {myProcurements.map(pr => (
                       <tr key={pr.id} className="hover:bg-slate-50/50">
-                        <td className="py-2.5 pr-4"><span className="font-semibold text-slate-800 block">{pr.pilotTitle}</span><span className="text-[9px] text-slate-400 font-mono">{pr.date} | {pr.id}</span></td>
-                        <td className="py-2.5 pr-4 font-semibold text-sidebar-active">₹{pr.scaledBudget.toLocaleString('en-IN')}</td>
-                        <td className="py-2.5 pr-4">{pr.sponsoringDepartment}</td>
-                        <td className="py-2.5"><span className="bg-blue-50 text-blue-700 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border border-blue-200">R170/R173</span></td>
+                        <td className="py-2.5 pr-4">
+                          <span className="font-semibold text-slate-800 block">{pr.pilotTitle}</span>
+                          <span className="text-[9px] text-slate-400 font-mono">{pr.date} | Ref: {pr.id}</span>
+                          {pr.targetScope && <span className="text-[10px] text-slate-500 block truncate max-w-xs">{pr.targetScope}</span>}
+                        </td>
+                        <td className="py-2.5 pr-4">
+                          <span className="font-medium text-sidebar block">{pr.startupName || "AquaSense Technologies"}</span>
+                          <span className="text-[9px] text-slate-400">Source: {pr.sponsoringDepartment}</span>
+                        </td>
+                        <td className="py-2.5 pr-4 font-semibold text-emerald-700">₹{pr.scaledBudget.toLocaleString('en-IN')}</td>
+                        <td className="py-2.5 pr-4">
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                            pr.status === "Accepted" ? "bg-emerald-100 text-emerald-800 border-emerald-200" :
+                            pr.status === "Declined" ? "bg-rose-100 text-rose-800 border-rose-200" :
+                            "bg-amber-100 text-amber-800 border-amber-200"
+                          }`}>
+                            {pr.status === "Accepted" ? "✓ Contract Executed" : pr.status === "Declined" ? "✕ Offer Declined" : "⏳ Awaiting Startup"}
+                          </span>
+                        </td>
+                        <td className="py-2.5 pr-4"><span className="bg-blue-50 text-blue-700 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border border-blue-200">R170/R173</span></td>
+                        <td className="py-2.5">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setContractModalData({ type: "adoption", procurement: pr, pilot: pilots.find(p => p.id === pr.pilotId) })}
+                              className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[10px] py-1 px-2.5 rounded flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                            >
+                              <ScrollText className="w-3 h-3" /> Contract
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDocketModalData({ type: "procurement", procurement: pr, pilot: pilots.find(p => p.id === pr.pilotId) })}
+                              className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-[10px] py-1 px-2.5 rounded flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                            >
+                              <FileText className="w-3 h-3 text-sidebar-active" /> Docket
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* State-Wide Inter-Municipal Contracts Registry (Shared Transparency) */}
+          <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2">
+              <div>
+                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <Handshake className="w-4 h-4 text-sidebar-active" />
+                  State-Wide Inter-Municipal Precedent Contracts Registry
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Shared repository of all executed precedent contracts and SLA benchmarks across participating Urban Local Bodies (ULBs).
+                </p>
+              </div>
+              <span className="bg-sidebar/10 text-sidebar font-bold text-[10px] px-2 py-0.5 rounded-full self-start sm:self-center">
+                Mutual Open Transparency
+              </span>
+            </div>
+
+            {procurements.length === 0 ? (
+              <p className="text-xs text-slate-400 italic">No inter-municipal contracts registered yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-[10px] text-slate-500 uppercase tracking-wider text-left bg-slate-50">
+                      <th className="py-2.5 px-3 font-semibold">Contract Ref &amp; Date</th>
+                      <th className="py-2.5 px-3 font-semibold">Adopting ULB (Buyer)</th>
+                      <th className="py-2.5 px-3 font-semibold">Vendor Startup</th>
+                      <th className="py-2.5 px-3 font-semibold">Sponsoring Origin</th>
+                      <th className="py-2.5 px-3 font-semibold">Contract Value</th>
+                      <th className="py-2.5 px-3 font-semibold">Status</th>
+                      <th className="py-2.5 px-3 text-right font-semibold">Inspect Details</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {procurements.map(pr => {
+                      const associatedPilot = pilots.find(p => p.id === pr.pilotId);
+                      return (
+                        <tr key={pr.id} className="hover:bg-slate-50/60">
+                          <td className="py-2.5 px-3">
+                            <span className="font-bold text-slate-800 block">CTR-{pr.id.toUpperCase()}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">{pr.date}</span>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className="font-semibold text-slate-900 block">{pr.adoptingDepartment}</span>
+                            <span className="text-[10px] text-slate-500">Officer: {pr.adoptingOfficialName}</span>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className="font-medium text-sidebar block">{pr.startupName || "AquaSense Technologies"}</span>
+                            <span className="text-[9px] text-slate-400 font-mono">Precedent: {pr.pilotTitle}</span>
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600 text-[11px]">{pr.sponsoringDepartment}</td>
+                          <td className="py-2.5 px-3 font-bold text-emerald-700">₹{pr.scaledBudget?.toLocaleString('en-IN')}</td>
+                          <td className="py-2.5 px-3">
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                              pr.status === "Accepted" ? "bg-emerald-100 text-emerald-800 border-emerald-200" :
+                              pr.status === "Declined" ? "bg-rose-100 text-rose-800 border-rose-200" :
+                              "bg-amber-100 text-amber-800 border-amber-200"
+                            }`}>
+                              {pr.status === "Accepted" ? "✓ Contract Executed" : pr.status === "Declined" ? "✕ Declined" : "⏳ Pending Acceptance"}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            <div className="flex justify-end items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setContractModalData({ type: "adoption", procurement: pr, pilot: associatedPilot })}
+                                className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[10px] py-1 px-2.5 rounded flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                              >
+                                <ScrollText className="w-3 h-3" /> View Contract
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDocketModalData({ type: "procurement", procurement: pr, pilot: associatedPilot })}
+                                className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-[10px] py-1 px-2 rounded flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                              >
+                                <FileText className="w-3 h-3 text-sidebar-active" /> Docket
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1488,11 +2384,13 @@ function OfficialDashboard({
       {/* ADOPT MODAL */}
       {adoptionModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 backdrop-blur-sm flex justify-center items-center p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full p-5 shadow-lg border border-slate-200">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-5 shadow-lg border border-slate-200 animate-slide-up">
             <div className="flex justify-between items-start mb-3">
               <div>
-                <h3 className="text-sm font-bold text-slate-800">Fast-Track Scaled Procurement</h3>
-                <p className="text-[10px] text-slate-500">Adopt a certified pilot precedent directly.</p>
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                  <Send className="w-4 h-4 text-emerald-600" /> Send Scaled Adoption Offer
+                </h3>
+                <p className="text-[10px] text-slate-500">Fast-track direct procurement offer under GFR 2017 Rules 170 &amp; 173 based on certified precedent.</p>
               </div>
               <button onClick={() => setAdoptionModalOpen(null)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
             </div>
@@ -1500,13 +2398,13 @@ function OfficialDashboard({
               <div className="bg-emerald-50 border border-emerald-200 p-3 rounded text-[11px] space-y-1">
                 <span className="font-bold text-emerald-800 uppercase tracking-wide block text-[10px]">&check; Certified Precedent</span>
                 <p><strong>Pilot:</strong> {pilots.find(p => p.id === adoptionModalOpen)?.title}</p>
-                <p><strong>Startup:</strong> {pilots.find(p => p.id === adoptionModalOpen)?.application.startupName}</p>
-                <p><strong>Metrics:</strong> {pilots.find(p => p.id === adoptionModalOpen)?.evidence.waterLossReduction}</p>
-                <p><strong>Verifier:</strong> {pilots.find(p => p.id === adoptionModalOpen)?.verification.verifierName}</p>
+                <p><strong>Startup:</strong> {pilots.find(p => p.id === adoptionModalOpen)?.application?.startupName}</p>
+                <p><strong>Verified Metrics:</strong> {pilots.find(p => p.id === adoptionModalOpen)?.evidence?.waterLossReduction}</p>
+                <p><strong>Verifier:</strong> {pilots.find(p => p.id === adoptionModalOpen)?.verification?.verifierName} (Score: {pilots.find(p => p.id === adoptionModalOpen)?.verification?.score}/100)</p>
               </div>
               <div className="bg-slate-50 p-3 rounded border text-[10px] space-y-1">
-                <span className="font-bold text-slate-600 uppercase tracking-wide block">Auto-Generated Justification</span>
-                <p className="text-slate-500 italic">"Fast-tracked under State procurement sandbox policies. Vendor exempted from EMD (GFR Rule 170) and prior experience (Rule 173)."</p>
+                <span className="font-bold text-slate-600 uppercase tracking-wide block">Statutory Justification</span>
+                <p className="text-slate-500 italic">"Fast-tracked under State procurement sandbox policies. Vendor exempted from EMD (GFR Rule 170) and prior turnover/experience (Rule 173). Offer requires formal startup acceptance."</p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -1514,13 +2412,25 @@ function OfficialDashboard({
                   <input type="text" required value={procureDept} onChange={(e) => setProcureDept(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-1.5 text-sm bg-slate-50" />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Scaled Budget (INR)</label>
-                  <input type="number" required placeholder="e.g. 2400000" value={procureBudget} onChange={(e) => setProcureBudget(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-1.5 text-sm" />
+                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Scaled Procurement Budget (INR)</label>
+                  <input type="number" required placeholder="e.g. 2400000" value={procureBudget} onChange={(e) => setProcureBudget(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-1.5 text-sm font-semibold" />
                 </div>
               </div>
-              <div className="flex justify-end gap-2 pt-2">
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Target Ward Deployment Scope</label>
+                <textarea
+                  rows={2}
+                  value={adoptionScope}
+                  onChange={(e) => setAdoptionScope(e.target.value)}
+                  placeholder="e.g. Deploy 80 acoustic sensors across Nagpur Central Zone to replicate Pune Ward 12 water savings."
+                  className="w-full border border-slate-300 rounded px-3 py-1.5 text-xs focus:outline-none"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
                 <button type="button" onClick={() => setAdoptionModalOpen(null)} className="px-3 py-1.5 border border-slate-300 rounded text-xs font-semibold hover:bg-slate-50">Cancel</button>
-                <button type="submit" className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold shadow-sm transition flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Confirm Procurement</button>
+                <button type="submit" className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold shadow-sm transition flex items-center gap-1.5">
+                  <Send className="w-3.5 h-3.5" /> Send Adoption Offer to Startup
+                </button>
               </div>
             </form>
           </div>
@@ -1552,17 +2462,46 @@ function VerifierDashboard({
     if (!notes.trim()) { showToast("Please provide evaluator notes before deciding", "error"); return; }
     const updated = pilots.map(p => {
       if (p.id === activePilotId) {
-        return { ...p, status: statusOption, verification: {
-          verifierId: currentUser.id, verifierName: currentUser.name, score: parseInt(score),
-          scorecard: [ { criterion: "≥15% measurable improvement", passed: c1 }, { criterion: "pilot ran ≥60 days", passed: c2 }, { criterion: "no safety incidents", passed: c3 } ],
-          notes, certifiedAt: new Date().toISOString().split("T")[0]
-        }};
+        let updatedEscrow = p.escrow;
+        if (statusOption === "Certified" && p.escrow) {
+          const updatedMilestones = p.escrow.milestones.map(m => {
+            if (m.id === "m3" && m.status !== "Disbursed") {
+              return {
+                ...m,
+                status: "Disbursed",
+                disbursedAt: new Date().toISOString().split("T")[0],
+                txRef: `TXN-PFMS-${Math.floor(10000 + Math.random() * 90000)}`
+              };
+            }
+            return m;
+          });
+          const totalDisbursed = updatedMilestones.filter(m => m.status === "Disbursed").reduce((sum, m) => sum + m.amount, 0);
+          updatedEscrow = {
+            ...p.escrow,
+            disbursedAmount: totalDisbursed,
+            milestones: updatedMilestones
+          };
+        }
+        return {
+          ...p,
+          status: statusOption,
+          verification: {
+            verifierId: currentUser.id, verifierName: currentUser.name, score: parseInt(score),
+            scorecard: [
+              { criterion: "≥15% measurable improvement", passed: c1 },
+              { criterion: "pilot ran ≥60 days", passed: c2 },
+              { criterion: "no safety incidents", passed: c3 }
+            ],
+            notes, certifiedAt: new Date().toISOString().split("T")[0]
+          },
+          escrow: updatedEscrow
+        };
       }
       return p;
     });
     setPilots(updated);
     setActivePilotId(null); setNotes("");
-    showToast(`Pilot verification complete: marked as ${statusOption}!`, "success");
+    showToast(`Pilot verification complete: marked as ${statusOption}!${statusOption === "Certified" ? " Final milestone tranche released via PFMS." : ""}`, "success");
   };
 
   return (
@@ -1583,7 +2522,7 @@ function VerifierDashboard({
                   <div>
                     <span className="bg-amber-100 text-amber-800 text-[9px] font-bold px-1.5 py-0.5 rounded border border-amber-200">Awaiting Audit</span>
                     <h3 className="text-sm font-bold text-slate-800 mt-1.5">{p.title}</h3>
-                    <p className="text-[10px] text-slate-500">Startup: <strong className="text-sidebar">{p.application.startupName}</strong> | {p.sector}</p>
+                    <p className="text-[10px] text-slate-500">Startup: <strong className="text-sidebar">{p.application?.startupName}</strong> | {p.sector}</p>
                   </div>
                   <button onClick={() => setSelectedPilot(p)} className="text-[10px] text-sidebar-active font-bold hover:underline">Full Details</button>
                 </div>
@@ -1715,9 +2654,10 @@ function AdminDashboard({
 
   const totalPilotsCount = pilots.length;
   const certifiedCount = pilots.filter(p => p.status === "Certified").length;
-  const scaleAdoptionsCount = procurements.length;
+  const acceptedProcurements = procurements.filter(pr => pr.status === "Accepted");
+  const scaleAdoptionsCount = acceptedProcurements.length;
   const totalPilotValue = pilots.reduce((acc, curr) => acc + (curr.application?.proposedCost || curr.budgetCap), 0);
-  const totalProcurementValue = procurements.reduce((acc, curr) => acc + curr.scaledBudget, 0);
+  const totalProcurementValue = acceptedProcurements.reduce((acc, curr) => acc + curr.scaledBudget, 0);
   const totalValueUnlocked = totalPilotValue + totalProcurementValue;
 
   const handleAddVerifier = (e) => {
@@ -2147,17 +3087,40 @@ function PilotDetailModal({ pilot, onClose, currentUser }) {
             </div>
           </div>
 
-          {pilot.application && (
+          {pilot.applications && pilot.applications.length > 0 ? (
+            <div className="border border-slate-200 rounded p-3 bg-slate-50/60 space-y-2.5">
+              <div className="flex justify-between items-center border-b pb-1">
+                <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Applicant Proposals ({pilot.applications.length})</h4>
+                <span className="bg-blue-50 text-blue-700 text-[9px] font-bold px-1.5 py-0.5 rounded border border-blue-200">DPIIT Verified</span>
+              </div>
+              <div className="space-y-2">
+                {pilot.applications.map((app, idx) => (
+                  <div key={app.id || idx} className="bg-white p-2.5 rounded border border-slate-200 text-[11px] space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-slate-800">{app.startupName} <span className="font-mono font-normal text-slate-400">({app.dpiitNo})</span></span>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                        app.status === "Selected" ? "bg-emerald-100 text-emerald-800 border border-emerald-200" :
+                        app.status === "Rejected" ? "bg-rose-100 text-rose-800 border border-rose-200" :
+                        "bg-amber-100 text-amber-800 border border-amber-200"
+                      }`}>{app.status || "Pending"}</span>
+                    </div>
+                    <p className="text-slate-700"><strong>Cost:</strong> ₹{app.proposedCost?.toLocaleString('en-IN')}</p>
+                    {app.proposedScope && <p className="text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-100 text-[10px] leading-relaxed"><strong>Scope:</strong> {app.proposedScope}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : pilot.application ? (
             <div className="border border-slate-200 rounded p-3 bg-slate-50/50 space-y-1.5">
               <div className="flex justify-between items-center border-b pb-1">
                 <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Application</h4>
                 <span className="bg-blue-50 text-blue-700 text-[9px] font-bold px-1.5 py-0.5 rounded">DPIIT Verified</span>
               </div>
               <p className="text-[11px]"><strong>Startup:</strong> {pilot.application.startupName} ({pilot.application.dpiitNo})</p>
-              <p className="text-[11px]"><strong>Cost:</strong> ₹{pilot.application.proposedCost.toLocaleString('en-IN')}</p>
+              <p className="text-[11px]"><strong>Cost:</strong> ₹{pilot.application.proposedCost?.toLocaleString('en-IN')}</p>
               <p className="text-[11px] bg-white p-2 rounded border"><strong>Scope:</strong> {pilot.application.proposedScope}</p>
             </div>
-          )}
+          ) : null}
 
           {pilot.evidence && (
             <div className="border border-amber-200 rounded p-3 bg-amber-50/10 space-y-1.5">
@@ -2200,6 +3163,567 @@ function PilotDetailModal({ pilot, onClose, currentUser }) {
 
         <div className="border-t pt-3 mt-4 flex justify-end">
           <button onClick={onClose} className="bg-slate-700 hover:bg-slate-800 text-white font-semibold py-1.5 px-3 rounded text-xs transition">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ==========================================================
+   5. CVC / CAG VIGILANCE AUDIT DEFENSE DOCKET MODAL
+   ========================================================== */
+function AuditDocketModal({ data, pilots, procurements, onClose, showToast }) {
+  const pilot = data.pilot || (data.procurement ? pilots.find(p => p.id === data.procurement.pilotId) : pilots[0]) || pilots[0];
+  const procurement = data.procurement || procurements.find(pr => pr.pilotId === pilot?.id) || procurements[0];
+  const startup = pilot?.application || {
+    startupName: procurement?.startupName || "AquaSense Technologies",
+    dpiitNo: "DPIIT98372",
+    proposedCost: 750000
+  };
+
+  const docketRef = `MAHA-MSInS-DOCKET-${pilot?.id?.toUpperCase() || "P1"}-2026`;
+  const scaledAmount = procurement?.scaledBudget || 2400000;
+  const estimatedTenderCost = Math.round(scaledAmount * 1.6);
+  const totalSavings = estimatedTenderCost - scaledAmount;
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleCopyRef = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(docketRef);
+    }
+    showToast("Audit Docket Reference copied to clipboard!", "success");
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex justify-center items-center p-3 sm:p-5 print:p-0 print:bg-white">
+      <div className="bg-white rounded-lg max-w-3xl w-full shadow-2xl border border-slate-300 overflow-hidden flex flex-col max-h-[92vh] print:max-h-none print:border-none print:shadow-none animate-slide-up">
+        {/* Top Control Bar (Hidden on print) */}
+        <div className="bg-slate-900 text-white px-5 py-3 flex items-center justify-between print:hidden flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-sidebar-active" />
+            <div>
+              <h3 className="text-sm font-bold">CVC / CAG Vigilance Audit Defense Docket</h3>
+              <p className="text-[10px] text-slate-400 font-mono">Statutory Exemption Certificate under GFR 2017 Rules 166, 170 &amp; 173</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCopyRef}
+              className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-2.5 py-1.5 rounded text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+            >
+              <FileText className="w-3.5 h-3.5" /> Copy Ref
+            </button>
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="bg-sidebar-active hover:bg-emerald-600 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" /> Print / Save PDF
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-slate-400 hover:text-white p-1 text-lg font-bold cursor-pointer"
+            >
+              &times;
+            </button>
+          </div>
+        </div>
+
+        {/* Scrollable Printable Memo Content */}
+        <div className="p-6 sm:p-8 overflow-y-auto print:overflow-visible space-y-6 text-slate-800 font-serif leading-relaxed text-xs">
+          {/* Government Formal Letterhead */}
+          <div className="border-b-2 border-slate-900 pb-4 text-center space-y-1">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full border border-amber-500 bg-amber-50 text-amber-900 font-bold text-lg mb-1 shadow-xs">
+              🏛️
+            </div>
+            <h2 className="text-base sm:text-lg font-bold uppercase tracking-wider text-slate-900">
+              Government of Maharashtra
+            </h2>
+            <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wide text-slate-700">
+              Urban Development Department &amp; Maharashtra State Innovation Society (MSInS)
+            </h3>
+            <p className="text-[10px] text-slate-500 font-sans tracking-wide">
+              Civil Secretariat, Mantralaya, Mumbai – 400032 | State Innovation Procurement Sandbox Framework
+            </p>
+            <div className="flex justify-between items-center text-[10px] font-sans pt-2 border-t border-slate-200 text-slate-600">
+              <span><strong>Docket Ref:</strong> {docketRef}</span>
+              <span><strong>Issued Date:</strong> {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+              <span><strong>Vigilance Code:</strong> GFR-2017-R170/173/166</span>
+            </div>
+          </div>
+
+          {/* Memo Title */}
+          <div className="text-center space-y-1 bg-slate-50 p-3 rounded border border-slate-200 font-sans">
+            <span className="bg-emerald-100 text-emerald-900 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full">
+              Official Memorandum &bull; Statutory Audit Defense
+            </span>
+            <h4 className="font-bold text-sm text-slate-900 uppercase">
+              Compliance Certificate for Precedent-Based Public Procurement
+            </h4>
+            <p className="text-[11px] text-slate-600 italic">
+              Record of Due Diligence, Empirical Precedent Verification &amp; Price Reasonableness
+            </p>
+          </div>
+
+          {/* 1. Contracting Parties */}
+          <div className="space-y-2 font-sans">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-800 border-b pb-1 flex items-center gap-1.5">
+              <span className="w-1.5 h-3.5 bg-sidebar-active inline-block rounded-xs"></span>
+              1. Contracting Entities &amp; Precedent Provenance
+            </h4>
+            <div className="grid grid-cols-2 gap-3 text-[11px] bg-slate-50/70 p-3 rounded border border-slate-200">
+              <div>
+                <p className="text-slate-500 text-[10px] uppercase font-bold">Procuring / Adopting Entity</p>
+                <p className="font-bold text-slate-800">{procurement?.adoptingDepartment || "Nagpur Municipal Corporation"}</p>
+                <p className="text-slate-600 text-[10px]">Competent Authority: {procurement?.adoptingOfficialName || "Meera (Addl. Commissioner)"}</p>
+              </div>
+              <div>
+                <p className="text-slate-500 text-[10px] uppercase font-bold">Sponsoring / Pilot Entity</p>
+                <p className="font-bold text-slate-800">{pilot?.department || "Pune Municipal Corporation"}</p>
+                <p className="text-slate-600 text-[10px]">Superintending Officer: {pilot?.sponsoringOfficialName || "Arjun"}</p>
+              </div>
+              <div>
+                <p className="text-slate-500 text-[10px] uppercase font-bold">Technology Vendor (Startup)</p>
+                <p className="font-bold text-sidebar">{startup.startupName}</p>
+                <p className="text-slate-600 text-[10px]">DPIIT Registration No: <strong className="font-mono text-slate-900">{startup.dpiitNo}</strong></p>
+              </div>
+              <div>
+                <p className="text-slate-500 text-[10px] uppercase font-bold">Precedent Pilot Title</p>
+                <p className="font-bold text-slate-800 truncate">{pilot?.title}</p>
+                <p className="text-slate-600 text-[10px]">Sector: {pilot?.sector} | Duration: {pilot?.durationDays} Days</p>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Statutory Regulatory Justification Matrix */}
+          <div className="space-y-2 font-sans">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-800 border-b pb-1 flex items-center gap-1.5">
+              <span className="w-1.5 h-3.5 bg-sidebar-active inline-block rounded-xs"></span>
+              2. Statutory Exemption Matrix (General Financial Rules 2017)
+            </h4>
+            <div className="border border-slate-200 rounded overflow-hidden">
+              <table className="min-w-full text-[11px]">
+                <thead className="bg-slate-100 text-slate-700 text-[10px] uppercase font-bold">
+                  <tr>
+                    <th className="py-2 px-3 text-left">Statutory Rule</th>
+                    <th className="py-2 px-3 text-left">Prescribed Exemption</th>
+                    <th className="py-2 px-3 text-left">Audit Compliance Record</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 text-slate-700">
+                  <tr>
+                    <td className="py-2 px-3 font-bold text-slate-900 font-mono">GFR Rule 170</td>
+                    <td className="py-2 px-3">Exemption from Earnest Money Deposit (Bid Security)</td>
+                    <td className="py-2 px-3 text-emerald-700 font-semibold">&check; Verified DPIIT Certificate {startup.dpiitNo}. EMD requirement legally waived.</td>
+                  </tr>
+                  <tr className="bg-slate-50/50">
+                    <td className="py-2 px-3 font-bold text-slate-900 font-mono">GFR Rule 173(i)</td>
+                    <td className="py-2 px-3">Relaxation of Prior Turnover and Prior Experience conditions</td>
+                    <td className="py-2 px-3 text-emerald-700 font-semibold">&check; Precedent Pilot verified with &ge;15% outcome benchmark, waiving ₹10 Cr turnover condition.</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 px-3 font-bold text-slate-900 font-mono">GFR Rule 166</td>
+                    <td className="py-2 px-3">Single Source Procurement for Proprietary Civic Innovation</td>
+                    <td className="py-2 px-3 text-emerald-700 font-semibold">&check; Proprietary acoustic IoT telemetry tested and certified. No comparable domestic alternative available.</td>
+                  </tr>
+                  <tr className="bg-slate-50/50">
+                    <td className="py-2 px-3 font-bold text-slate-900 font-mono">MSInS Sandbox GR</td>
+                    <td className="py-2 px-3">State Government Resolution on Inter-Agency Scaling</td>
+                    <td className="py-2 px-3 text-emerald-700 font-semibold">&check; Municipal Commissioner authorized to adopt certified sandbox precedent without separate RFP.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* 3. Independent Empirical Verification Findings */}
+          <div className="space-y-2 font-sans">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-800 border-b pb-1 flex items-center gap-1.5">
+              <span className="w-1.5 h-3.5 bg-sidebar-active inline-block rounded-xs"></span>
+              3. Independent Technical Verification Findings
+            </h4>
+            <div className="bg-emerald-50/60 border border-emerald-200 p-3.5 rounded space-y-2 text-[11px]">
+              <div className="flex justify-between items-center border-b border-emerald-200 pb-1.5">
+                <span className="font-bold text-emerald-950">Auditor: {pilot?.verification?.verifierName || "Dr. Kavita Rao (Water Infrastructure Audit Board)"}</span>
+                <span className="bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded text-[10px]">Score: {pilot?.verification?.score || 95}/100</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-slate-700">
+                <p><strong>Quantified Outcome:</strong> {pilot?.evidence?.waterLossReduction || "22% reduction in water wastage"}</p>
+                <p><strong>Operating Duration:</strong> {pilot?.evidence?.duration || "90 continuous operational days"}</p>
+                <p><strong>Hardware Deployed:</strong> {pilot?.evidence?.sensorsDeployed || "25 acoustic sensors"}</p>
+                <p><strong>Safety &amp; Incidents:</strong> Zero pipe damage / zero safety incidents recorded</p>
+              </div>
+              <p className="text-slate-600 italic bg-white p-2 rounded border border-emerald-100">
+                "{pilot?.verification?.notes || "Outcome evidence is thoroughly documented and cross-verified via SCADA data. Flow telemetry confirms the 22% drop in water wastage. Very strong performance and highly replicable design."}"
+              </p>
+            </div>
+          </div>
+
+          {/* 4. Financial Due Diligence & Public Savings */}
+          <div className="space-y-2 font-sans">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-800 border-b pb-1 flex items-center gap-1.5">
+              <span className="w-1.5 h-3.5 bg-sidebar-active inline-block rounded-xs"></span>
+              4. Price Reasonableness &amp; Public Value Benchmark
+            </h4>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="bg-slate-50 p-2.5 rounded border border-slate-200">
+                <span className="text-[9px] font-bold uppercase text-slate-400 block">Scaled Contract Value</span>
+                <span className="text-sm font-bold text-slate-900">₹{scaledAmount.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="bg-slate-50 p-2.5 rounded border border-slate-200">
+                <span className="text-[9px] font-bold uppercase text-slate-400 block">Open Tender Benchmark</span>
+                <span className="text-sm font-bold text-slate-500 line-through">₹{estimatedTenderCost.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="bg-emerald-50 p-2.5 rounded border border-emerald-200">
+                <span className="text-[9px] font-bold uppercase text-emerald-800 block">Public Treasury Savings</span>
+                <span className="text-sm font-bold text-emerald-700">₹{totalSavings.toLocaleString('en-IN')} (37.6%)</span>
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-500 italic mt-1 font-serif">
+              "The undersigned Competent Financial Authority certifies that the contract rates reflect demonstrated economies of scale from the pilot phase and represent superior value for public money compared to prevailing market benchmarks."
+            </p>
+          </div>
+
+          {/* 5. Formal Digital Signature Blocks */}
+          <div className="pt-4 border-t-2 border-slate-300 font-sans grid grid-cols-3 gap-4 text-center">
+            <div className="border border-slate-200 p-3 rounded bg-slate-50/50">
+              <div className="h-10 flex items-center justify-center font-mono font-bold text-[10px] text-emerald-700 border-b border-dashed pb-1">
+                &check; DIGITALLY SIGNED
+              </div>
+              <p className="font-bold text-[10px] text-slate-800 mt-1">{pilot?.sponsoringOfficialName || "Arjun"}</p>
+              <p className="text-[9px] text-slate-500">Superintending Engineer<br/>Pune Municipal Corporation</p>
+            </div>
+            <div className="border border-slate-200 p-3 rounded bg-slate-50/50">
+              <div className="h-10 flex items-center justify-center font-mono font-bold text-[10px] text-emerald-700 border-b border-dashed pb-1">
+                &check; INDEPENDENT AUDIT CLEARANCE
+              </div>
+              <p className="font-bold text-[10px] text-slate-800 mt-1">{pilot?.verification?.verifierName || "Dr. Kavita Rao"}</p>
+              <p className="text-[9px] text-slate-500">Accredited Technical Verifier<br/>Water Infrastructure Audit Board</p>
+            </div>
+            <div className="border border-slate-200 p-3 rounded bg-slate-50/50">
+              <div className="h-10 flex items-center justify-center font-mono font-bold text-[10px] text-emerald-700 border-b border-dashed pb-1">
+                &check; STATUTORY APPROVAL SEAL
+              </div>
+              <p className="font-bold text-[10px] text-slate-800 mt-1">{procurement?.adoptingOfficialName || "Meera"}</p>
+              <p className="text-[9px] text-slate-500">Additional Commissioner<br/>Nagpur Municipal Corporation</p>
+            </div>
+          </div>
+
+          {/* Footer Clearance Notice */}
+          <div className="text-[9px] text-slate-400 font-mono text-center border-t pt-3 flex justify-between items-center">
+            <span>AUDIT COMPLIANT &bull; CAG / CVC STATUTORY DEFENSE DOCKET</span>
+            <span>IMMUTABLE HASH: SHA256-DOCKET-2026-X992</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ==========================================================
+   6. BILATERAL PUBLIC PROCUREMENT CONTRACT VIEWER MODAL
+   ========================================================== */
+function ContractDetailsModal({
+  data, pilots, procurements, currentUser, onClose, showToast, onAcceptOffer, onDeclineOffer
+}) {
+  const isAdoption = data.type === "adoption";
+  const procurement = data.procurement || (isAdoption ? procurements.find(pr => pr.id === data.procurementId) : null);
+  const pilot = data.pilot || (procurement ? pilots.find(p => p.id === procurement.pilotId) : data.pilot) || pilots[0];
+  const application = data.application || pilot?.application || {
+    startupName: procurement?.startupName || "AquaSense Technologies",
+    dpiitNo: "DPIIT98372",
+    proposedCost: 750000
+  };
+
+  const isPendingMyAcceptance = isAdoption && procurement?.status === "Pending Startup Acceptance" && (currentUser?.id === procurement?.startupId || currentUser?.id === "ram");
+  const contractId = isAdoption ? `CTR-MAHA-SCALE-${procurement?.id?.toUpperCase() || "PR1"}` : `CTR-MAHA-PILOT-${pilot?.id?.toUpperCase() || "P1"}`;
+
+  const buyerEntity = isAdoption ? (procurement?.adoptingDepartment || "Nagpur Municipal Corporation") : pilot?.department;
+  const buyerOfficer = isAdoption ? (procurement?.adoptingOfficialName || "Meera, Additional Commissioner") : `${pilot?.sponsoringOfficialName || "Arjun"}, Superintending Engineer`;
+  const sellerEntity = isAdoption ? (procurement?.startupName || "AquaSense Technologies") : (application?.startupName || "AquaSense Technologies");
+  const sellerOfficer = "Ram (Founder & Managing Director)";
+  const dpiitNumber = application?.dpiitNo || "DPIIT98372";
+  const contractBudget = isAdoption ? (procurement?.scaledBudget || 2400000) : (application?.proposedCost || pilot?.budgetCap || 750000);
+  const executionDate = isAdoption ? (procurement?.date || "2026-08-12") : (pilot?.verification?.certifiedAt || "2026-04-10");
+
+  const tranche1 = Math.round(contractBudget * 0.30);
+  const tranche2 = Math.round(contractBudget * 0.40);
+  const tranche3 = contractBudget - tranche1 - tranche2;
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleCopyRef = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(contractId);
+    }
+    showToast("Contract Identifier copied to clipboard!", "success");
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex justify-center items-center p-3 sm:p-5 print:p-0 print:bg-white">
+      <div className="bg-white rounded-lg max-w-3xl w-full shadow-2xl border border-slate-300 overflow-hidden flex flex-col max-h-[92vh] print:max-h-none print:border-none print:shadow-none animate-slide-up">
+        {/* Top Control Bar (Hidden on print) */}
+        <div className="bg-slate-900 text-white px-5 py-3 flex items-center justify-between print:hidden flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <ScrollText className="w-5 h-5 text-emerald-400" />
+            <div>
+              <h3 className="text-sm font-bold">Public Procurement Contract &amp; Service Agreement</h3>
+              <p className="text-[10px] text-slate-400 font-mono">Bilateral Municipal Agreement &bull; Ref: {contractId}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCopyRef}
+              className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-2.5 py-1.5 rounded text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+            >
+              <FileText className="w-3.5 h-3.5" /> Copy ID
+            </button>
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" /> Print Agreement
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-slate-400 hover:text-white p-1 text-lg font-bold cursor-pointer"
+            >
+              &times;
+            </button>
+          </div>
+        </div>
+
+        {/* Scrollable Printable Contract Body */}
+        <div className="p-6 sm:p-8 overflow-y-auto print:overflow-visible space-y-6 text-slate-800 font-serif leading-relaxed text-xs">
+          {/* Header Seal */}
+          <div className="border-b-2 border-slate-900 pb-4 text-center space-y-1">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full border border-emerald-600 bg-emerald-50 text-emerald-900 font-bold text-lg mb-1 shadow-xs">
+              📜
+            </div>
+            <h2 className="text-base sm:text-lg font-bold uppercase tracking-wider text-slate-900">
+              Government Service Contract &amp; Work Order
+            </h2>
+            <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wide text-slate-700">
+              Executed under General Financial Rules (GFR) 2017 &amp; Maharashtra State Innovation Sandbox
+            </h3>
+            <p className="text-[10px] text-slate-500 font-sans tracking-wide">
+              Registered in State Precedent Procurement Ledger &bull; Form 83-A Bilateral Agreement
+            </p>
+            <div className="flex justify-between items-center text-[10px] font-sans pt-2 border-t border-slate-200 text-slate-600">
+              <span><strong>Contract ID:</strong> {contractId}</span>
+              <span><strong>Execution Date:</strong> {executionDate}</span>
+              <span>
+                <strong>Contract Status:</strong>{" "}
+                <span className={`font-bold px-1.5 py-0.5 rounded text-[9px] ${
+                  (isAdoption && procurement?.status === "Accepted") || (!isAdoption && pilot?.status === "Certified")
+                    ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                    : isAdoption && procurement?.status === "Declined"
+                    ? "bg-rose-100 text-rose-800 border border-rose-300"
+                    : "bg-amber-100 text-amber-800 border border-amber-300"
+                }`}>
+                  {(isAdoption && procurement?.status === "Accepted") || (!isAdoption && pilot?.status === "Certified")
+                    ? "✓ EXECUTED & LEGALLY BINDING"
+                    : isAdoption && procurement?.status === "Declined"
+                    ? "✕ OFFER DECLINED"
+                    : "⏳ AWAITING COUNTER-SIGNATURE"}
+                </span>
+              </span>
+            </div>
+          </div>
+
+          {/* Parties Summary Box */}
+          <div className="space-y-2 font-sans">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-800 border-b pb-1 flex items-center gap-1.5">
+              <span className="w-1.5 h-3.5 bg-emerald-600 inline-block rounded-xs"></span>
+              Contracting Parties &amp; Legal Signatories
+            </h4>
+            <div className="grid grid-cols-2 gap-3 text-[11px] bg-slate-50 p-3.5 rounded border border-slate-200">
+              <div>
+                <p className="text-slate-500 text-[10px] uppercase font-bold">First Party (Purchaser / Municipal Entity)</p>
+                <p className="font-bold text-slate-900 text-xs mt-0.5">{buyerEntity}</p>
+                <p className="text-slate-600 text-[10px]">Authorized Signatory: {buyerOfficer}</p>
+                <p className="text-slate-500 text-[10px]">Statutory Jurisdiction: Urban Local Body (ULB), Maharashtra</p>
+              </div>
+              <div>
+                <p className="text-slate-500 text-[10px] uppercase font-bold">Second Party (Technology Contractor)</p>
+                <p className="font-bold text-sidebar text-xs mt-0.5">{sellerEntity}</p>
+                <p className="text-slate-600 text-[10px]">Authorized Signatory: {sellerOfficer}</p>
+                <p className="text-slate-500 text-[10px]">
+                  DPIIT Recognition: <strong className="font-mono text-slate-800">{dpiitNumber}</strong> | MSME Registered
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Contract Overview & Provenance */}
+          <div className="space-y-2 font-sans">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-800 border-b pb-1 flex items-center gap-1.5">
+              <span className="w-1.5 h-3.5 bg-emerald-600 inline-block rounded-xs"></span>
+              Preamble &amp; Precedent Provenance
+            </h4>
+            <div className="bg-slate-50/70 p-3 rounded border border-slate-200 text-slate-700 leading-relaxed text-[11px]">
+              <p>
+                WHEREAS the First Party desires to procure and deploy proven civic technology for municipal operations; AND WHEREAS the Second Party has demonstrated empirical efficacy through a certified Maharashtra State Innovation Society (MSInS) sandbox pilot: <strong>"{pilot?.title}"</strong> sponsored by <strong>{pilot?.department}</strong>, audited and verified by independent auditor <strong>{pilot?.verification?.verifierName || "Dr. Kavita Rao"} (Score: {pilot?.verification?.score || 95}/100)</strong>;
+              </p>
+              <p className="mt-1.5">
+                NOW THEREFORE, in exercise of statutory powers under <strong>General Financial Rules (GFR) 2017 Rules 166, 170 and 173</strong>, the parties hereto agree to execute this public procurement contract without redundant re-tendering.
+              </p>
+            </div>
+          </div>
+
+          {/* Article 1: Scope of Work */}
+          <div className="space-y-2 font-sans">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-800 border-b pb-1 flex items-center gap-1.5">
+              <span className="w-1.5 h-3.5 bg-emerald-600 inline-block rounded-xs"></span>
+              Article 1: Scope of Work &amp; Deliverables
+            </h4>
+            <div className="bg-white p-3 rounded border border-slate-200 space-y-1.5 text-[11px]">
+              <p className="text-slate-800">
+                <strong>Deployment Target &amp; Geographical Bounds:</strong>
+              </p>
+              <p className="text-slate-600 bg-slate-50 p-2 rounded border border-slate-100 italic">
+                "{isAdoption ? (procurement?.targetScope || "City-wide deployment across municipal water supply zones with SCADA integration.") : (application?.proposedScope || pilot?.description)}"
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-slate-600 text-[10px] pt-1">
+                <li>Hardware supply, installation, calibration, and commissioning within designated wards.</li>
+                <li>Real-time telemetry data integration with municipal central command SCADA dashboard.</li>
+                <li>Periodic preventive maintenance and telemetry uptime assurance.</li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Article 2: Commercial Value & Milestone Payment Schedule */}
+          <div className="space-y-2 font-sans">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-800 border-b pb-1 flex items-center gap-1.5">
+              <span className="w-1.5 h-3.5 bg-emerald-600 inline-block rounded-xs"></span>
+              Article 2: Commercial Value &amp; Phased Escrow Schedule (PFMS)
+            </h4>
+            <div className="border border-slate-200 rounded overflow-hidden">
+              <table className="min-w-full text-[11px]">
+                <thead className="bg-slate-100 text-slate-700 text-[10px] uppercase font-bold">
+                  <tr>
+                    <th className="py-2 px-3 text-left">Tranche / Milestone</th>
+                    <th className="py-2 px-3 text-left">Deliverable Trigger</th>
+                    <th className="py-2 px-3 text-right">Percentage</th>
+                    <th className="py-2 px-3 text-right">Disbursement Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 text-slate-700">
+                  <tr>
+                    <td className="py-2 px-3 font-bold text-slate-900">Tranche 1: Mobilization</td>
+                    <td className="py-2 px-3">Site survey, hardware delivery &amp; baseline connectivity</td>
+                    <td className="py-2 px-3 text-right font-mono">30%</td>
+                    <td className="py-2 px-3 text-right font-bold text-slate-900">₹{tranche1.toLocaleString('en-IN')}</td>
+                  </tr>
+                  <tr className="bg-slate-50/50">
+                    <td className="py-2 px-3 font-bold text-slate-900">Tranche 2: Mid-Term Telemetry</td>
+                    <td className="py-2 px-3">Continuous 45-day live sensor stream &amp; interim report</td>
+                    <td className="py-2 px-3 text-right font-mono">40%</td>
+                    <td className="py-2 px-3 text-right font-bold text-slate-900">₹{tranche2.toLocaleString('en-IN')}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 px-3 font-bold text-slate-900">Tranche 3: Handover &amp; Acceptance</td>
+                    <td className="py-2 px-3">Final technical audit sign-off &amp; municipal handover</td>
+                    <td className="py-2 px-3 text-right font-mono">30%</td>
+                    <td className="py-2 px-3 text-right font-bold text-slate-900">₹{tranche3.toLocaleString('en-IN')}</td>
+                  </tr>
+                  <tr className="bg-emerald-50/70 font-bold">
+                    <td colSpan={3} className="py-2 px-3 text-slate-900 uppercase text-[10px]">Total Contract Value (Inclusive of Taxes)</td>
+                    <td className="py-2 px-3 text-right text-emerald-800 text-xs">₹{contractBudget.toLocaleString('en-IN')}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[10px] text-slate-500 italic mt-1">
+              *All milestone payments shall be transferred via Public Financial Management System (PFMS) directly to the vendor's designated DBT account within 72 hours of municipal verification.
+            </p>
+          </div>
+
+          {/* Article 3: Service Level Agreement & Safe Harbor */}
+          <div className="space-y-2 font-sans">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-800 border-b pb-1 flex items-center gap-1.5">
+              <span className="w-1.5 h-3.5 bg-emerald-600 inline-block rounded-xs"></span>
+              Article 3: Service Level Agreement (SLA) &amp; Safe Harbor Clause
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+              <div className="bg-slate-50 p-3 rounded border border-slate-200">
+                <span className="font-bold text-slate-900 block mb-0.5">Performance Guarantee Benchmark</span>
+                <p className="text-slate-600 text-[10px]">
+                  Vendor guarantees minimum 15% reduction in non-revenue water wastage (benchmarked against Pune precedent of 22%). SCADA telemetry uptime must exceed 98.5%.
+                </p>
+              </div>
+              <div className="bg-slate-50 p-3 rounded border border-slate-200">
+                <span className="font-bold text-slate-900 block mb-0.5">Innovation Safe Harbor Protection</span>
+                <p className="text-slate-600 text-[10px]">
+                  In accordance with State Innovation Sandbox Framework, startup shall not face blacklisting or forfeiture for telemetry baseline deviations, subject to a 21-day calibration cure period.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Signatures & Mutual Binding */}
+          <div className="pt-4 border-t-2 border-slate-300 font-sans grid grid-cols-2 gap-6 text-center">
+            <div className="border border-slate-200 p-3 rounded bg-slate-50/50">
+              <div className="h-10 flex items-center justify-center font-mono font-bold text-[10px] text-emerald-700 border-b border-dashed pb-1">
+                &check; COUNTERSIGNED BY FIRST PARTY
+              </div>
+              <p className="font-bold text-[10px] text-slate-800 mt-1">{buyerOfficer}</p>
+              <p className="text-[9px] text-slate-500">{buyerEntity}</p>
+            </div>
+            <div className="border border-slate-200 p-3 rounded bg-slate-50/50">
+              <div className="h-10 flex items-center justify-center font-mono font-bold text-[10px] text-emerald-700 border-b border-dashed pb-1">
+                {isAdoption && procurement?.status === "Pending Startup Acceptance" ? (
+                  <span className="text-amber-600">⏳ PENDING STARTUP ACCEPTANCE</span>
+                ) : (
+                  "✓ DIGITALLY EXECUTED BY SECOND PARTY"
+                )}
+              </div>
+              <p className="font-bold text-[10px] text-slate-800 mt-1">{sellerOfficer}</p>
+              <p className="text-[9px] text-slate-500">{sellerEntity} ({dpiitNumber})</p>
+            </div>
+          </div>
+
+          {/* Pending acceptance call to action if Ram is viewing */}
+          {isPendingMyAcceptance && (
+            <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-4 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-3 font-sans shadow-md animate-slide-up">
+              <div>
+                <h4 className="font-bold text-sm">Review Complete. Ready to execute contract?</h4>
+                <p className="text-[11px] text-emerald-100">By clicking accept, this bilateral agreement becomes legally binding under GFR 170 &amp; 173.</p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => onAcceptOffer(procurement.id)}
+                  className="bg-white hover:bg-emerald-50 text-emerald-900 font-bold text-xs py-2 px-4 rounded shadow transition cursor-pointer"
+                >
+                  &check; Accept &amp; Sign Now
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDeclineOffer(procurement.id)}
+                  className="bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs py-2 px-3 rounded transition cursor-pointer"
+                >
+                  Decline
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Footer Notice */}
+          <div className="text-[9px] text-slate-400 font-mono text-center border-t pt-3 flex justify-between items-center">
+            <span>MUTUAL TRANSPARENCY &bull; MAHARASHTRA STATE PRECEDENT CONTRACT REGISTRY</span>
+            <span>IMMUTABLE HASH: SHA256-CONTRACT-2026-X992</span>
+          </div>
         </div>
       </div>
     </div>
