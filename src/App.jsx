@@ -60,6 +60,25 @@ import {
   createPilotEscrow
 } from "./data/seedData";
 
+/* There is no backend — every tab starts from the same seed data in its own
+   isolated React state. Mirroring the shared "registry" slices (not session
+   state like currentUser) into localStorage, plus listening for the native
+   `storage` event, lets multiple tabs of the same browser act like they're
+   looking at the same live system: an official selecting a startup in one
+   tab shows up in a verifier's queue in another, without a refresh. The
+   `storage` event only ever fires in *other* tabs than the one that wrote
+   the value, so this can't loop back on itself. */
+const SANDBOX_STORAGE_KEY = "aarambh_sandbox_state_v1";
+
+const loadStoredSandboxState = () => {
+  try {
+    const raw = window.localStorage.getItem(SANDBOX_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
 const getPilotApplications = (pilot) => {
   if (!pilot) return [];
   if (Array.isArray(pilot.applications) && pilot.applications.length > 0) {
@@ -75,13 +94,15 @@ const getPilotApplications = (pilot) => {
 };
 
 export default function App() {
-  // App state
-  const [users, setUsers] = useState(initialUsers);
-  const [pilots, setPilots] = useState(initialPilots);
-  const [procurements, setProcurements] = useState(initialProcurements);
-  const [verifiers, setVerifiers] = useState(initialVerifiers);
-  const [onboardingRequests, setOnboardingRequests] = useState(initialOnboardingRequests);
-  const [sectorRules, setSectorRules] = useState(initialSectorRules);
+  // App state — each seeded from localStorage if another tab already wrote a
+  // sandbox session, so a freshly opened tab joins the same running demo
+  // instead of resetting everyone back to the seed data.
+  const [users, setUsers] = useState(() => loadStoredSandboxState()?.users || initialUsers);
+  const [pilots, setPilots] = useState(() => loadStoredSandboxState()?.pilots || initialPilots);
+  const [procurements, setProcurements] = useState(() => loadStoredSandboxState()?.procurements || initialProcurements);
+  const [verifiers, setVerifiers] = useState(() => loadStoredSandboxState()?.verifiers || initialVerifiers);
+  const [onboardingRequests, setOnboardingRequests] = useState(() => loadStoredSandboxState()?.onboardingRequests || initialOnboardingRequests);
+  const [sectorRules, setSectorRules] = useState(() => loadStoredSandboxState()?.sectorRules || initialSectorRules);
 
   // Active session
   const [currentUser, setCurrentUser] = useState(null); // starts at login screen
@@ -104,6 +125,43 @@ export default function App() {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
   };
+
+  // Mirror the shared registry into localStorage on every change, so other
+  // tabs of this browser can pick it up. Session state (who's logged in,
+  // which tab is open) deliberately stays out of this — each tab keeps its
+  // own role so testing an official and a verifier side by side works.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SANDBOX_STORAGE_KEY, JSON.stringify({
+        users, pilots, procurements, verifiers, onboardingRequests, sectorRules
+      }));
+    } catch {
+      // Private browsing / storage disabled — the tab still works, it just
+      // won't sync with others.
+    }
+  }, [users, pilots, procurements, verifiers, onboardingRequests, sectorRules]);
+
+  // Pick up changes another tab just wrote. `storage` only fires in tabs
+  // other than the one that made the change, so this can't echo back.
+  useEffect(() => {
+    const handleExternalUpdate = (e) => {
+      if (e.key !== SANDBOX_STORAGE_KEY || !e.newValue) return;
+      try {
+        const next = JSON.parse(e.newValue);
+        if (next.users) setUsers(next.users);
+        if (next.pilots) setPilots(next.pilots);
+        if (next.procurements) setProcurements(next.procurements);
+        if (next.verifiers) setVerifiers(next.verifiers);
+        if (next.onboardingRequests) setOnboardingRequests(next.onboardingRequests);
+        if (next.sectorRules) setSectorRules(next.sectorRules);
+        showToast("Synced an update from another open tab.", "info");
+      } catch {
+        // Malformed write from another tab — ignore rather than crash.
+      }
+    };
+    window.addEventListener("storage", handleExternalUpdate);
+    return () => window.removeEventListener("storage", handleExternalUpdate);
+  }, []);
 
   // Reset to seed data
   const handleResetData = () => {
@@ -396,6 +454,7 @@ export default function App() {
                   showToast={showToast}
                   selectedPilot={selectedPilot}
                   setSelectedPilot={setSelectedPilot}
+                  sectorRules={sectorRules}
                 />
               )}
               {activeRole === "Admin" && (
@@ -1186,6 +1245,104 @@ function RegistrationView({
 /* ==========================================================
    1. STARTUP DASHBOARD & VIEWS (RAM)
    ========================================================== */
+/* A startup's citable track record: every pilot it has been certified on,
+   across every department — not just the one an official is currently
+   reviewing. Shared by the startup's own "My Pilot Passport" tab and by the
+   official's applicant review, so both render identically. Handles a
+   startup with no certified pilots yet gracefully — most applicants will
+   be first-timers, and that isn't a reason to hide the passport. */
+function PilotPassportPanel({ startupName, dpiitNo, sector, startupId, pilots, setDocketModalData }) {
+  const certifiedPilots = pilots.filter(p => p.status === "Certified" && p.application?.startupId === startupId);
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+      <div className="bg-sidebar text-white px-6 py-8 text-center relative border-b-4 border-sidebar-accent">
+        <div className={`absolute top-3 right-3 text-white font-bold text-[9px] uppercase tracking-wider py-0.5 px-2 rounded shadow ${certifiedPilots.length > 0 ? "bg-emerald-500" : "bg-slate-500"}`}>
+          {certifiedPilots.length > 0 ? "✓ Active Passport" : "No Certifications Yet"}
+        </div>
+        <Award className="w-12 h-12 mx-auto text-sidebar-accent mb-2" />
+        <h2 className="doc-serif text-xl font-bold tracking-wide text-white">PRECEDENT COMPLIANCE PASSPORT</h2>
+        <p className="text-[10px] text-slate-300 tracking-widest uppercase mt-1">State Innovation Procurement Framework Certificate</p>
+        <div className="mt-1.5 text-[10px] text-blue-100/80 font-mono">Passport ID: PP-{dpiitNo || "UNVERIFIED"}-2026</div>
+      </div>
+
+      <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 border-b border-slate-200 text-sm">
+        <div>
+          <span className="text-[9px] text-slate-400 uppercase font-bold block">Startup Name</span>
+          <span className="font-bold text-slate-800 text-sm">{startupName}</span>
+        </div>
+        <div>
+          <span className="text-[9px] text-slate-400 uppercase font-bold block">DPIIT Number</span>
+          <span className="font-mono font-bold text-slate-800 text-sm">{dpiitNo || "Not on file"}</span>
+        </div>
+        <div>
+          <span className="text-[9px] text-slate-400 uppercase font-bold block">Sector</span>
+          <span className="font-bold text-slate-800 text-sm">{sector || "—"}</span>
+        </div>
+      </div>
+
+      <div className="p-6 space-y-5">
+        <h3 className="text-sm font-bold text-slate-800 border-b pb-2 flex items-center gap-1.5">
+          <CheckCircle className="text-emerald-500 w-4 h-4" /> Certified Pilots Registry
+        </h3>
+
+        {certifiedPilots.length === 0 ? (
+          <div className="text-center py-5 text-slate-400 italic text-xs">
+            No certified pilots linked to this passport yet. This applicant has no independently
+            verified track record on Aarambh — evaluate the proposal on its own merits.
+          </div>
+        ) : (
+          certifiedPilots.map(p => (
+            <div key={p.id} className="border border-emerald-200 bg-emerald-50/30 p-5 rounded-lg space-y-3">
+              <div className="flex justify-between items-start">
+                <div>
+                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 py-0.5 px-1.5 rounded">Certified Outcome Precedent</span>
+                  <h4 className="font-bold text-slate-900 text-sm mt-1.5">{p.title}</h4>
+                  <p className="text-[11px] text-slate-500">Agency: {p.department} ({p.sponsoringOfficialName})</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-400 block font-mono">Certified</span>
+                  <span className="font-bold text-slate-600 text-[11px]">{p.verification?.certifiedAt}</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 border-t border-b border-emerald-100 py-2.5 text-xs">
+                <div><span className="text-[9px] text-slate-400 font-bold block">Key Metric</span><span className="font-bold text-slate-800">{p.evidence?.waterLossReduction}</span></div>
+                <div><span className="text-[9px] text-slate-400 font-bold block">Duration</span><span className="font-semibold text-slate-800">{p.evidence?.duration}</span></div>
+                <div><span className="text-[9px] text-slate-400 font-bold block">Audit Score</span><span className="font-bold text-emerald-700">{p.verification?.score}/100</span></div>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold block">Verifier Endorsement</span>
+                <p className="text-[11px] text-slate-500 italic mt-0.5">"{p.verification?.notes}"</p>
+                <p className="text-[10px] text-slate-400 font-bold mt-1">Signed: {p.verification?.verifierName}</p>
+              </div>
+              <div className="bg-white p-2.5 rounded border border-slate-200 flex flex-wrap justify-between items-center text-[10px] gap-2">
+                <span className="font-mono text-slate-400">Hash: SHA256-{p.id}-CERT-X992</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDocketModalData({ type: "pilot", pilot: p })}
+                    className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-[10px] py-1 px-2.5 rounded flex items-center gap-1 shadow-xs transition cursor-pointer"
+                  >
+                    <FileText className="w-3 h-3 text-sidebar-active" /> CVC Audit Defense Docket
+                  </button>
+                  <span className="text-emerald-700 font-bold flex items-center gap-0.5"><ShieldCheck className="w-3.5 h-3.5" /> GFR COMPLIANT</span>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="bg-slate-50 p-5 border-t border-slate-200 text-[11px] text-slate-500 space-y-2">
+        <h4 className="font-bold text-slate-700 uppercase tracking-wide text-[10px]">GFR 2017 Exemptions</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div><strong className="text-slate-700 block mb-0.5">Rule 170: EMD Exemption</strong>Startups with DPIIT recognition and verified pilot outcomes are exempted from EMD/Bid Security.</div>
+          <div><strong className="text-slate-700 block mb-0.5">Rule 173: Relaxation of Prior Criteria</strong>Prior turnover and experience requirements relaxed for certified passport holders.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StartupDashboard({
   currentTab, setCurrentTab, currentUser, pilots, setPilots, procurements, setProcurements,
   showToast, selectedPilot, setSelectedPilot, evidenceModalOpen, setEvidenceModalOpen,
@@ -1750,89 +1907,14 @@ function StartupDashboard({
       {/* 3. PILOT PASSPORT */}
       {currentTab === "passport" && (
         <div className="max-w-4xl mx-auto space-y-5 animate-fade-in">
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-            <div className="bg-sidebar text-white px-6 py-8 text-center relative border-b-4 border-sidebar-accent">
-              <div className="absolute top-3 right-3 bg-emerald-500 text-white font-bold text-[9px] uppercase tracking-wider py-0.5 px-2 rounded shadow">
-                ✓ Active Passport
-              </div>
-              <Award className="w-12 h-12 mx-auto text-sidebar-accent mb-2" />
-              <h2 className="doc-serif text-xl font-bold tracking-wide text-white">PRECEDENT COMPLIANCE PASSPORT</h2>
-              <p className="text-[10px] text-slate-300 tracking-widest uppercase mt-1">State Innovation Procurement Framework Certificate</p>
-              <div className="mt-1.5 text-[10px] text-blue-100/80 font-mono">Passport ID: PP-{currentUser.dpiitNo}-2026</div>
-            </div>
-
-            <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 border-b border-slate-200 text-sm">
-              <div>
-                <span className="text-[9px] text-slate-400 uppercase font-bold block">Startup Name</span>
-                <span className="font-bold text-slate-800 text-sm">{currentUser.startupName}</span>
-              </div>
-              <div>
-                <span className="text-[9px] text-slate-400 uppercase font-bold block">DPIIT Number</span>
-                <span className="font-mono font-bold text-slate-800 text-sm">{currentUser.dpiitNo}</span>
-              </div>
-              <div>
-                <span className="text-[9px] text-slate-400 uppercase font-bold block">Sector</span>
-                <span className="font-bold text-slate-800 text-sm">{currentUser.sector}</span>
-              </div>
-            </div>
-
-            <div className="p-6 space-y-5">
-              <h3 className="text-sm font-bold text-slate-800 border-b pb-2 flex items-center gap-1.5">
-                <CheckCircle className="text-emerald-500 w-4 h-4" /> Certified Pilots Registry
-              </h3>
-
-              {pilots.filter(p => p.status === "Certified" && p.application?.startupId === currentUser.id).length === 0 ? (
-                <div className="text-center py-5 text-slate-400 italic text-xs">No certified pilots linked to this passport yet.</div>
-              ) : (
-                pilots.filter(p => p.status === "Certified" && p.application?.startupId === currentUser.id).map(p => (
-                  <div key={p.id} className="border border-emerald-200 bg-emerald-50/30 p-5 rounded-lg space-y-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 py-0.5 px-1.5 rounded">Certified Outcome Precedent</span>
-                        <h4 className="font-bold text-slate-900 text-sm mt-1.5">{p.title}</h4>
-                        <p className="text-[11px] text-slate-500">Agency: {p.department} ({p.sponsoringOfficialName})</p>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-400 block font-mono">Certified</span>
-                        <span className="font-bold text-slate-600 text-[11px]">{p.verification?.certifiedAt}</span>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 border-t border-b border-emerald-100 py-2.5 text-xs">
-                      <div><span className="text-[9px] text-slate-400 font-bold block">Key Metric</span><span className="font-bold text-slate-800">{p.evidence?.waterLossReduction}</span></div>
-                      <div><span className="text-[9px] text-slate-400 font-bold block">Duration</span><span className="font-semibold text-slate-800">{p.evidence?.duration}</span></div>
-                      <div><span className="text-[9px] text-slate-400 font-bold block">Audit Score</span><span className="font-bold text-emerald-700">{p.verification?.score}/100</span></div>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-slate-400 font-bold block">Verifier Endorsement</span>
-                      <p className="text-[11px] text-slate-500 italic mt-0.5">"{p.verification?.notes}"</p>
-                      <p className="text-[10px] text-slate-400 font-bold mt-1">Signed: {p.verification?.verifierName}</p>
-                    </div>
-                    <div className="bg-white p-2.5 rounded border border-slate-200 flex flex-wrap justify-between items-center text-[10px] gap-2">
-                      <span className="font-mono text-slate-400">Hash: SHA256-{p.id}-CERT-X992</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setDocketModalData({ type: "pilot", pilot: p })}
-                          className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-[10px] py-1 px-2.5 rounded flex items-center gap-1 shadow-xs transition cursor-pointer"
-                        >
-                          <FileText className="w-3 h-3 text-sidebar-active" /> CVC Audit Defense Docket
-                        </button>
-                        <span className="text-emerald-700 font-bold flex items-center gap-0.5"><ShieldCheck className="w-3.5 h-3.5" /> GFR COMPLIANT</span>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="bg-slate-50 p-5 border-t border-slate-200 text-[11px] text-slate-500 space-y-2">
-              <h4 className="font-bold text-slate-700 uppercase tracking-wide text-[10px]">GFR 2017 Exemptions</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div><strong className="text-slate-700 block mb-0.5">Rule 170: EMD Exemption</strong>Startups with DPIIT recognition and verified pilot outcomes are exempted from EMD/Bid Security.</div>
-                <div><strong className="text-slate-700 block mb-0.5">Rule 173: Relaxation of Prior Criteria</strong>Prior turnover and experience requirements relaxed for certified passport holders.</div>
-              </div>
-            </div>
-          </div>
+          <PilotPassportPanel
+            startupName={currentUser.startupName}
+            dpiitNo={currentUser.dpiitNo}
+            sector={currentUser.sector}
+            startupId={currentUser.id}
+            pilots={pilots}
+            setDocketModalData={setDocketModalData}
+          />
         </div>
       )}
 
@@ -1948,6 +2030,12 @@ function OfficialDashboard({
   const [newDesc, setNewDesc] = useState("");
   const [feedbackPilotId, setFeedbackPilotId] = useState(null);
   const [sponsorNotes, setSponsorNotes] = useState("");
+  const [viewPassportApp, setViewPassportApp] = useState(null);
+  const [officialEvidencePilotId, setOfficialEvidencePilotId] = useState(null);
+  const [oeOutcome, setOeOutcome] = useState("");
+  const [oeDuration, setOeDuration] = useState("");
+  const [oeAssets, setOeAssets] = useState("");
+  const [oeSummary, setOeSummary] = useState("");
   const [browseQuery, setBrowseQuery] = useState("");
   const [browseSector, setBrowseSector] = useState("All");
   const [procureDept, setProcureDept] = useState(currentUser.department);
@@ -1982,12 +2070,16 @@ function OfficialDashboard({
   };
 
   const handleSelectStartup = (pilotId, startupId) => {
-    let selectedName = "Startup";
+    // Read the name from current props before the update, not inside the
+    // setPilots updater — React runs that updater during its own render
+    // pass, after this function has already returned, so a variable
+    // mutated in there and read here (below) would still hold its default.
+    const targetPilot = pilots.find(p => p.id === pilotId);
+    const selectedName = getPilotApplications(targetPilot).find(a => a.startupId === startupId)?.startupName || "Startup";
     setPilots(prev => prev.map(p => {
       if (p.id === pilotId) {
         const apps = getPilotApplications(p);
         const target = apps.find(a => a.startupId === startupId);
-        if (target) selectedName = target.startupName;
         const updatedApps = apps.map(a => {
           if (a.startupId === startupId) {
             return { ...a, status: "Selected" };
@@ -2084,6 +2176,34 @@ function OfficialDashboard({
     showToast("Sponsor outcome feedback logged successfully.", "success");
   };
 
+  // Only the awarded startup can normally upload evidence from its own dashboard —
+  // but a seeded/demo applicant with no login (or a vendor slow to self-report)
+  // would otherwise leave the pilot stuck at "Running" forever, since nothing
+  // would ever move it to "Completed" for the verifier to see. The sponsoring
+  // official can log it on the vendor's behalf so the pilot always has a path
+  // to independent audit.
+  const handleOfficialEvidenceSubmit = (e) => {
+    e.preventDefault();
+    setPilots(prev => prev.map(p => {
+      if (p.id !== officialEvidencePilotId) return p;
+      return {
+        ...p,
+        status: "Completed",
+        evidence: {
+          waterLossReduction: oeOutcome,
+          duration: oeDuration,
+          sensorsDeployed: oeAssets,
+          summary: oeSummary || "Pilot executed successfully matching initial scope specifications.",
+          docs: "Sponsor_Logged_Outcome_Report.pdf",
+          submittedAt: new Date().toISOString().split("T")[0],
+          loggedBy: "sponsor"
+        }
+      };
+    }));
+    setOfficialEvidencePilotId(null); setOeOutcome(""); setOeDuration(""); setOeAssets(""); setOeSummary("");
+    showToast("Outcome evidence logged. Pilot is now queued for independent verification.", "success");
+  };
+
   const handleConfirmAdoption = (e) => {
     e.preventDefault();
     if (!procureBudget) { showToast("Please enter the scaled procurement budget", "error"); return; }
@@ -2165,6 +2285,15 @@ function OfficialDashboard({
                         </div>
 
                         <div className="flex items-center gap-2 self-start md:self-center">
+                          {p.status === "Running" && (
+                            <button
+                              onClick={() => { setOfficialEvidencePilotId(p.id); setOeOutcome(""); setOeDuration(""); setOeAssets(""); setOeSummary(""); }}
+                              className="bg-amber-500 hover:bg-amber-600 text-white font-semibold text-[11px] py-1.5 px-3 rounded shadow-sm transition"
+                              title="Log the vendor's outcome evidence so this pilot can go to independent verification"
+                            >
+                              Log Outcome Evidence
+                            </button>
+                          )}
                           {p.status === "Completed" && !p.evidence?.sponsorFeedback && (
                             <button
                               onClick={() => { setFeedbackPilotId(p.id); setSponsorNotes(""); }}
@@ -2269,6 +2398,14 @@ function OfficialDashboard({
 
                                     {/* Action Buttons: Select and Reject next to each other */}
                                     <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => setViewPassportApp({ startupId: app.startupId, startupName: app.startupName, dpiitNo: app.dpiitNo, sector: p.sector })}
+                                        className="border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-[11px] py-1.5 px-3 rounded flex items-center gap-1 transition"
+                                        title="View this applicant's certified track record"
+                                      >
+                                        <Award className="w-3 h-3 text-sidebar-active" /> Passport
+                                      </button>
                                       {isPending && (p.status === "Applied" || p.status === "Open") && (
                                         <>
                                           <button
@@ -2724,6 +2861,73 @@ function OfficialDashboard({
         </div>
       )}
 
+      {/* APPLICANT PASSPORT MODAL */}
+      {viewPassportApp && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 backdrop-blur-sm flex justify-center items-start sm:items-center p-4">
+          <div className="max-w-2xl w-full my-6 relative animate-slide-up">
+            <button
+              onClick={() => setViewPassportApp(null)}
+              className="absolute -top-3 -right-3 z-10 bg-white text-slate-500 hover:text-slate-800 rounded-full w-8 h-8 flex items-center justify-center shadow-md border border-slate-200 text-lg font-bold"
+            >
+              &times;
+            </button>
+            <PilotPassportPanel
+              startupName={viewPassportApp.startupName}
+              dpiitNo={viewPassportApp.dpiitNo}
+              sector={viewPassportApp.sector}
+              startupId={viewPassportApp.startupId}
+              pilots={pilots}
+              setDocketModalData={setDocketModalData}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* OFFICIAL EVIDENCE MODAL — unblocks pilots whose awarded applicant can't self-report */}
+      {officialEvidencePilotId && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 backdrop-blur-sm flex justify-center items-center p-4">
+          <div className="bg-white rounded-lg max-w-lg w-full p-5 shadow-lg border border-slate-200 animate-slide-up">
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Log Outcome Evidence</h3>
+                <p className="text-[11px] text-slate-500">
+                  Record the vendor's results on their behalf — for cases where the awarded
+                  startup hasn't submitted evidence through its own portal.
+                </p>
+              </div>
+              <button onClick={() => setOfficialEvidencePilotId(null)} className="text-slate-400 hover:text-slate-600 text-lg font-bold">&times;</button>
+            </div>
+            <form onSubmit={handleOfficialEvidenceSubmit} className="space-y-3">
+              <div className="bg-amber-50 text-amber-800 text-[10px] p-2.5 rounded border border-amber-200">
+                <strong>Attention:</strong> Logging this evidence moves the pilot to independent verification.
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Key Performance Metric</label>
+                <input type="text" required placeholder="e.g. 18% reduction in pipe-burst incidents" value={oeOutcome} onChange={(e) => setOeOutcome(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-sidebar-active" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Duration</label>
+                  <input type="text" required placeholder="e.g. 75 Days" value={oeDuration} onChange={(e) => setOeDuration(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Assets Deployed</label>
+                  <input type="text" required placeholder="e.g. 15 sensors" value={oeAssets} onChange={(e) => setOeAssets(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-1.5 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Technical Summary</label>
+                <textarea rows={2} placeholder="Summarize outcomes..." value={oeSummary} onChange={(e) => setOeSummary(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-1.5 text-sm focus:outline-none" />
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button type="button" onClick={() => setOfficialEvidencePilotId(null)} className="px-3 py-1.5 border border-slate-300 rounded text-xs font-semibold">Cancel</button>
+                <button type="submit" className="px-3 py-1.5 bg-sidebar hover:bg-sidebar-dark text-white rounded text-xs font-semibold transition">Submit for Verification</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* FEEDBACK MODAL */}
       {feedbackPilotId && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 backdrop-blur-sm flex justify-center items-center p-4">
@@ -2815,20 +3019,36 @@ function OfficialDashboard({
    3. VERIFIER DASHBOARD & VIEWS
    ========================================================== */
 function VerifierDashboard({
-  currentTab, setCurrentTab, currentUser, pilots, setPilots, showToast, selectedPilot, setSelectedPilot
+  currentTab, setCurrentTab, currentUser, pilots, setPilots, showToast, selectedPilot, setSelectedPilot, sectorRules
 }) {
   const [activePilotId, setActivePilotId] = useState(null);
   const [score, setScore] = useState(90);
   const [notes, setNotes] = useState("");
-  const [c1, setC1] = useState(true);
-  const [c2, setC2] = useState(true);
-  const [c3, setC3] = useState(true);
+  // Keyed by criterion index rather than fixed c1/c2/c3 — the checklist is
+  // read live from the sector's published success criteria (Admin > Success
+  // Criteria), which vary in count per sector and can change over time.
+  const [criteriaChecks, setCriteriaChecks] = useState({});
+  const [verificationMethod, setVerificationMethod] = useState("");
+  const [evidenceReviewed, setEvidenceReviewed] = useState(false);
+  const [noConflict, setNoConflict] = useState(false);
 
   const pendingList = pilots.filter(p => p.status === "Completed");
   const verifiedHistory = pilots.filter(p => p.status === "Certified" || p.status === "Rejected");
 
+  const resetAuditForm = () => {
+    setActivePilotId(null);
+    setNotes("");
+    setScore(90);
+    setCriteriaChecks({});
+    setVerificationMethod("");
+    setEvidenceReviewed(false);
+    setNoConflict(false);
+  };
+
   const handleVerifyAction = (statusOption) => {
     if (!notes.trim()) { showToast("Please provide evaluator notes before deciding", "error"); return; }
+    if (!verificationMethod) { showToast("Please select how this evidence was independently verified", "error"); return; }
+    if (!evidenceReviewed || !noConflict) { showToast("Please confirm both compliance declarations before deciding", "error"); return; }
     const updated = pilots.map(p => {
       if (p.id === activePilotId) {
         let updatedEscrow = p.escrow;
@@ -2851,16 +3071,18 @@ function VerifierDashboard({
             milestones: updatedMilestones
           };
         }
+        const publishedCriteria = sectorRules[p.sector] || [];
         return {
           ...p,
           status: statusOption,
           verification: {
             verifierId: currentUser.id, verifierName: currentUser.name, score: parseInt(score),
-            scorecard: [
-              { criterion: "≥15% measurable improvement", passed: c1 },
-              { criterion: "pilot ran ≥60 days", passed: c2 },
-              { criterion: "no safety incidents", passed: c3 }
-            ],
+            scorecard: publishedCriteria.length > 0
+              ? publishedCriteria.map((criterion, idx) => ({ criterion, passed: criteriaChecks[idx] !== false }))
+              : [{ criterion: "No success criteria were on file for this sector at audit time", passed: true }],
+            verificationMethod,
+            evidenceReviewed,
+            noConflictOfInterest: noConflict,
             notes, certifiedAt: new Date().toISOString().split("T")[0]
           },
           escrow: updatedEscrow
@@ -2869,7 +3091,7 @@ function VerifierDashboard({
       return p;
     });
     setPilots(updated);
-    setActivePilotId(null); setNotes("");
+    resetAuditForm();
     showToast(`Pilot verification complete: marked as ${statusOption}!${statusOption === "Certified" ? " Final milestone tranche released via PFMS." : ""}`, "success");
   };
 
@@ -2891,10 +3113,39 @@ function VerifierDashboard({
           ]} />
 
           {pendingList.length === 0 ? (
-            <div className="bg-white rounded-lg p-6 border border-slate-200 text-center text-slate-400 shadow-sm">
-              <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
-              <p className="font-bold text-slate-700 text-sm">Queue Cleared</p>
-              <p className="text-xs mt-1">All submitted pilots have been audited.</p>
+            <div className="bg-white rounded-lg p-6 border border-slate-200 shadow-sm">
+              <div className="text-center text-slate-400">
+                <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+                <p className="font-bold text-slate-700 text-sm">Queue Cleared</p>
+                <p className="text-xs mt-1">No pilot has evidence submitted and awaiting audit right now.</p>
+              </div>
+              {/* A pilot only reaches this queue after: posted -> a startup applies -> the
+                  sponsoring official selects one -> evidence is submitted (by the startup,
+                  or logged by the official). This breaks down exactly where the pipeline
+                  actually stands, since an empty queue looks identical whether nothing has
+                  happened yet or everything is already certified. */}
+              {(() => {
+                const openCount = pilots.filter(p => p.status === "Open" || p.status === "Applied").length;
+                const runningCount = pilots.filter(p => p.status === "Running").length;
+                const certifiedCount = pilots.filter(p => p.status === "Certified").length;
+                if (openCount + runningCount + certifiedCount === 0) return null;
+                return (
+                  <div className="mt-5 pt-5 border-t border-slate-100 grid grid-cols-3 gap-3 text-center">
+                    <div>
+                      <span className="block font-display text-xl font-extrabold text-slate-700 tabular-nums">{openCount}</span>
+                      <span className="block text-[10px] text-slate-400 mt-0.5">Open / awaiting a selected vendor</span>
+                    </div>
+                    <div>
+                      <span className="block font-display text-xl font-extrabold text-slate-700 tabular-nums">{runningCount}</span>
+                      <span className="block text-[10px] text-slate-400 mt-0.5">Running — no evidence submitted yet</span>
+                    </div>
+                    <div>
+                      <span className="block font-display text-xl font-extrabold text-emerald-600 tabular-nums">{certifiedCount}</span>
+                      <span className="block text-[10px] text-slate-400 mt-0.5">Already certified</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           ) : (
             pendingList.map(p => (
@@ -2929,29 +3180,63 @@ function VerifierDashboard({
                 </div>
 
                 {activePilotId !== p.id ? (
-                  <button onClick={() => { setActivePilotId(p.id); setNotes(""); setScore(90); }} className="bg-sidebar hover:bg-sidebar-dark text-white font-semibold text-xs py-1.5 px-3 rounded transition">
+                  <button onClick={() => { resetAuditForm(); setActivePilotId(p.id); }} className="bg-sidebar hover:bg-sidebar-dark text-white font-semibold text-xs py-1.5 px-3 rounded transition">
                     Evaluate &amp; Complete Audit
                   </button>
                 ) : (
                   <div className="bg-slate-50 p-4 rounded-lg border-2 border-sidebar space-y-4 animate-slide-up">
-                    <h4 className="font-bold text-xs text-slate-800 border-b pb-1 uppercase tracking-wider">Technical Evaluator Scorecard</h4>
-                    <div className="space-y-2">
-                      <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
-                        <input type="checkbox" checked={c1} onChange={(e) => setC1(e.target.checked)} className="rounded border-slate-300 text-sidebar-active" />
-                        <span>&ge;15% measurable improvement</span>
-                      </label>
-                      <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
-                        <input type="checkbox" checked={c2} onChange={(e) => setC2(e.target.checked)} className="rounded border-slate-300 text-sidebar-active" />
-                        <span>Pilot ran &ge;60 days</span>
-                      </label>
-                      <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
-                        <input type="checkbox" checked={c3} onChange={(e) => setC3(e.target.checked)} className="rounded border-slate-300 text-sidebar-active" />
-                        <span>Zero safety incidents</span>
-                      </label>
+                    <div className="border-b pb-1.5">
+                      <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wider">Independent Technical Audit Form</h4>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Every field below is retained on the certified record and reproduced in the CVC/CAG audit docket.</p>
                     </div>
+
+                    {/* 1. Published sector criteria — read live, not hardcoded, so it always
+                        reflects whatever Admin currently publishes for this pilot's sector. */}
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-bold uppercase text-slate-500">
+                        1. Published Success Criteria — {p.sector}
+                      </label>
+                      {(sectorRules[p.sector] || []).length === 0 ? (
+                        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2.5 py-2">
+                          No success criteria are on file for "{p.sector}" yet. Admin should publish them under Success Criteria — score the submission on its narrative merits below in the meantime.
+                        </p>
+                      ) : (
+                        <div className="space-y-1.5 bg-white p-2.5 rounded border border-slate-200">
+                          {(sectorRules[p.sector] || []).map((criterion, idx) => (
+                            <label key={idx} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={criteriaChecks[idx] !== false}
+                                onChange={(e) => setCriteriaChecks(prev => ({ ...prev, [idx]: e.target.checked }))}
+                                className="rounded border-slate-300 text-sidebar-active"
+                              />
+                              <span>{criterion}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 2. How the evidence was actually checked, not just what was submitted. */}
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">2. Verification Method</label>
+                      <select
+                        required
+                        value={verificationMethod}
+                        onChange={(e) => setVerificationMethod(e.target.value)}
+                        className="w-full border border-slate-300 rounded px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-sidebar-active"
+                      >
+                        <option value="" disabled>How was this evidence independently checked?</option>
+                        <option value="Site Visit">Site Visit — physical inspection of the deployment</option>
+                        <option value="Remote Telemetry Audit">Remote Telemetry Audit — cross-checked live sensor/SCADA data</option>
+                        <option value="Document Review">Document Review — desk audit of submitted reports</option>
+                        <option value="Third-Party Lab Report">Third-Party Lab Report — independent test certificate</option>
+                      </select>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Score (0-100)</label>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">3. Score (0-100)</label>
                         <div className="flex items-center gap-2">
                           <input type="range" min="0" max="100" value={score} onChange={(e) => setScore(e.target.value)} className="flex-grow accent-sidebar-active" />
                           <span className="font-bold text-xs text-slate-800 w-10 text-right">{score}/100</span>
@@ -2959,13 +3244,42 @@ function VerifierDashboard({
                       </div>
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Auditor Notes</label>
-                      <textarea required rows={2} placeholder="Detailed assessment..." value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-1.5 text-xs focus:outline-none" />
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">4. Technical Findings &amp; Auditor Notes</label>
+                      <textarea required rows={3} placeholder="Detailed assessment: what was checked, what it showed, and why it does or doesn't support the outcome claimed..." value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-1.5 text-xs focus:outline-none" />
                     </div>
-                    <div className="flex gap-2 justify-end">
-                      <button onClick={() => setActivePilotId(null)} className="border border-slate-300 text-slate-500 py-1 px-2.5 rounded text-[10px] font-semibold">Cancel</button>
-                      <button onClick={() => handleVerifyAction("Rejected")} className="bg-rose-600 hover:bg-rose-700 text-white font-bold py-1 px-2.5 rounded text-[10px]">Reject</button>
-                      <button onClick={() => handleVerifyAction("Certified")} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1 px-2.5 rounded text-[10px]">Certify</button>
+
+                    {/* 3. Compliance declarations — a real audit form doesn't just record a
+                        score, it records that the auditor is independent and actually looked. */}
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">5. Auditor Declarations</label>
+                      <div className="space-y-1.5 bg-white p-2.5 rounded border border-slate-200">
+                        <label className="flex items-start gap-2 text-[11px] text-slate-700 cursor-pointer">
+                          <input type="checkbox" checked={evidenceReviewed} onChange={(e) => setEvidenceReviewed(e.target.checked)} className="mt-0.5 rounded border-slate-300 text-sidebar-active" />
+                          <span>I have reviewed the submitted evidence documentation and consider it sufficient to support this decision.</span>
+                        </label>
+                        <label className="flex items-start gap-2 text-[11px] text-slate-700 cursor-pointer">
+                          <input type="checkbox" checked={noConflict} onChange={(e) => setNoConflict(e.target.checked)} className="mt-0.5 rounded border-slate-300 text-sidebar-active" />
+                          <span>I declare no financial or personal conflict of interest with the vendor or the sponsoring department.</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 justify-end pt-1 border-t border-slate-200">
+                      <button onClick={resetAuditForm} className="border border-slate-300 text-slate-500 py-1.5 px-2.5 rounded text-[10px] font-semibold">Cancel</button>
+                      <button
+                        onClick={() => handleVerifyAction("Rejected")}
+                        disabled={!notes.trim() || !verificationMethod || !evidenceReviewed || !noConflict}
+                        className="bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-1.5 px-2.5 rounded text-[10px] transition"
+                      >
+                        Reject
+                      </button>
+                      <button
+                        onClick={() => handleVerifyAction("Certified")}
+                        disabled={!notes.trim() || !verificationMethod || !evidenceReviewed || !noConflict}
+                        className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-1.5 px-2.5 rounded text-[10px] transition"
+                      >
+                        Certify
+                      </button>
                     </div>
                   </div>
                 )}
@@ -3599,6 +3913,9 @@ function PilotDetailModal({ pilot, onClose, currentUser }) {
             <div className="border border-emerald-200 rounded p-3 bg-emerald-50/20 space-y-1.5">
               <h4 className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 border-b pb-1">Certification</h4>
               <p className="text-[11px]"><strong>Score:</strong> <span className="font-bold text-emerald-700">{pilot.verification.score}/100</span></p>
+              {pilot.verification.verificationMethod && (
+                <p className="text-[11px]"><strong>Verification Method:</strong> {pilot.verification.verificationMethod}</p>
+              )}
               <div className="space-y-0.5">
                 {pilot.verification.scorecard.map((c, idx) => (
                   <div key={idx} className="flex items-center gap-1 text-[10px] font-semibold">
