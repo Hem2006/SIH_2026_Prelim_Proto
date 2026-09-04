@@ -52,7 +52,7 @@
 export const initialPilots = [
   {
     id: "p1",
-    title: "Leak Detection Pilot â€” Pune Ward 12",
+    title: "Leak Detection Pilot — Pune Ward 12",
     department: "Pune Municipal Corporation",
     sponsoringOfficialId: "arjun",
     sponsoringOfficialName: "Arjun",
@@ -96,8 +96,8 @@ export const initialPilots = [
       verifierName: "Dr. Kavita Rao",
       score: 95,
       scorecard: [
-        { criterion: "â‰¥15% measurable improvement", passed: true },
-        { criterion: "pilot ran â‰¥60 days", passed: true },
+        { criterion: "≥15% measurable improvement", passed: true },
+        { criterion: "pilot ran ≥60 days", passed: true },
         { criterion: "no safety incidents", passed: true }
       ],
       notes: "Outcome evidence is thoroughly documented and cross-verified via SCADA data. Flow telemetry confirms the 22% drop in water wastage. Very strong performance and highly replicable design.",
@@ -196,7 +196,7 @@ export const initialPilots = [
   },
   {
     id: "p4",
-    title: "Smart Pressure Management â€” Nagpur Zone 3",
+    title: "Smart Pressure Management — Nagpur Zone 3",
     department: "Nagpur Municipal Corporation",
     sponsoringOfficialId: "meera",
     sponsoringOfficialName: "Meera",
@@ -281,7 +281,7 @@ export const initialProcurements = [
   {
     id: "pr1",
     pilotId: "p1",
-    pilotTitle: "Leak Detection Pilot â€” Pune Ward 12",
+    pilotTitle: "Leak Detection Pilot — Pune Ward 12",
     startupId: "ram",
     startupName: "AquaSense Technologies",
     sponsoringDepartment: "Pune Municipal Corporation",
@@ -322,27 +322,27 @@ export const initialOnboardingRequests = [
 
 export const initialSectorRules = {
   "Water & Sanitation": [
-    "â‰¥15% measurable improvement in key sector metric confirmed",
-    "Pilot ran for â‰¥60 continuous days",
+    "≥15% measurable improvement in key sector metric confirmed",
+    "Pilot ran for ≥60 continuous days",
     "Zero safety incidents during pilot period"
   ],
   "Energy & Cleantech": [
-    "â‰¥10% energy savings",
+    "≥10% energy savings",
     "zero grid disturbances",
-    "pilot ran â‰¥90 days"
+    "pilot ran ≥90 days"
   ],
   "Healthcare & Medtech": [
-    "â‰¥98% diagnostic accuracy",
+    "≥98% diagnostic accuracy",
     "zero patient complaints",
     "CDSCO standards alignment"
   ],
   "Roadworks": [
-    "â‰¥20% reduction in surface defects",
-    "pilot ran â‰¥90 days",
+    "≥20% reduction in surface defects",
+    "pilot ran ≥90 days",
     "no traffic safety incidents"
   ],
   "Food Technology": [
-    "â‰¥95% batch quality compliance",
+    "≥95% batch quality compliance",
     "zero contamination events",
     "FSSAI standards alignment"
   ]
