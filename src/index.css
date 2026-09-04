@@ -4,23 +4,64 @@
 
 @layer base {
   body {
-    @apply text-slate-800 bg-[#F7F7F7] antialiased;
+    @apply text-slate-600 bg-sand antialiased;
+    font-family: "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: Outfit, "DM Sans", ui-sans-serif, system-ui, sans-serif;
+    @apply text-navy-900 tracking-display;
+  }
+
+  ::selection {
+    background-color: #B15738;
+    color: #FFFFFF;
+  }
+}
+
+@layer components {
+  /* Small labelled kicker above a section heading — a diamond, then caps. */
+  .eyebrow {
+    @apply inline-flex items-center gap-2 text-[11px] font-bold uppercase
+           tracking-[0.16em] text-terracotta-600;
+  }
+  .eyebrow::before {
+    content: "";
+    @apply inline-block w-[7px] h-[7px] rotate-45 bg-terracotta-600;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded bg-terracotta-600
+           px-6 py-3 text-sm font-bold text-white transition
+           hover:bg-terracotta-700;
+  }
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 rounded border
+           border-navy-200 bg-white px-6 py-3 text-sm font-bold text-navy-800
+           transition hover:border-navy-600 hover:text-navy-900;
+  }
+
+  /* Section rhythm: the reference breathes far more than a dashboard does. */
+  .shell {
+    @apply mx-auto w-full max-w-shell px-6 sm:px-8;
   }
 }
 
 @layer utilities {
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 5px;
-  }
-  .scrollbar-thin::-webkit-scrollbar-track {
-    background: transparent;
-  }
+  .scrollbar-thin::-webkit-scrollbar { width: 5px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: rgba(255,255,255,0.15);
+    background: rgba(255, 255, 255, 0.15);
     border-radius: 10px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background: rgba(255,255,255,0.25);
+    background: rgba(255, 255, 255, 0.25);
+  }
+
+  /* Engraved diagonal hatch, used behind navy panels. */
+  .hatch {
+    background-image:
+      repeating-linear-gradient(45deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 12px);
   }
 }
 
@@ -32,9 +73,154 @@
   from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.animate-fade-in {
-  animation: fadeIn 0.3s ease-out;
+.animate-fade-in { animation: fadeIn 0.3s ease-out; }
+.animate-slide-up { animation: slideUp 0.25s ease-out; }
+
+/* ---------------------------------------------------------------------------
+   Touch ergonomics.
+
+   Many in-app actions are deliberately compact for a dense desktop console
+   ("Apply Now", "CVC Docket", "Approve") — as little as 15px tall, which is
+   unusable with a thumb. On touch pointers only, give every action a real hit
+   area. These are low-specificity element selectors, so any Tailwind utility
+   already on the element (flex, items-start, justify-between …) still wins —
+   this only fills in where nothing was specified.
+--------------------------------------------------------------------------- */
+@media (pointer: coarse) {
+  /* `main` alone misses the document modals — they render in a fixed overlay
+     outside it, so their Print / Copy ID / close controls stayed 28px. */
+  button,
+  main select,
+  main input[type="checkbox"],
+  header nav button {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  main input[type="checkbox"] {
+    min-width: 22px;
+    min-height: 22px;
+  }
+
+  /* form fields are easier to hit and stop iOS zooming in on focus */
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="password"],
+  textarea,
+  select {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  textarea { min-height: 88px; }
 }
-.animate-slide-up {
-  animation: slideUp 0.25s ease-out;
+
+/* ---------------------------------------------------------------------------
+   Lock zoom on touch devices.
+
+   `user-scalable=no` in the viewport meta covers Android. iOS Safari has
+   deliberately ignored that since iOS 10, so the pinch gesture is cancelled in
+   JS (see main.jsx) and double-tap-to-zoom is killed here — `touch-action:
+   manipulation` is honoured on iOS and removes the 300ms tap delay as a bonus.
+--------------------------------------------------------------------------- */
+@media (pointer: coarse) {
+  html {
+    touch-action: manipulation;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Print / Save-as-PDF.
+
+   The contract and audit docket live inside a `position: fixed` overlay with an
+   inner scroll container. Printing that directly gives you page 1 and nothing
+   else — fixed elements don't paginate — with the rest of the app rendered
+   underneath. This lifts the document out of the overlay so it flows across
+   pages, and suppresses everything else on the sheet.
+--------------------------------------------------------------------------- */
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  /* Nothing prints... */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* ...except the document itself. */
+  .print-document,
+  .print-document * {
+    visibility: visible !important;
+  }
+
+  /* Un-fix the overlay so the document can paginate instead of clipping. */
+  .print-overlay {
+    position: static !important;
+    display: block !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .print-document {
+    position: static !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    animation: none !important;
+  }
+
+  /* the inner scroll pane must release its height cap too */
+  .print-document > * {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* keep the seals, status chips and navy rules — browsers drop backgrounds by default */
+  .print-document,
+  .print-document * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* don't split a clause, signature block or table row across two sheets */
+  .print-document table,
+  .print-document tr,
+  .print-document h3,
+  .print-document h4 {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-document h3,
+  .print-document h4 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* the phone tab bar and modal chrome never belong on paper */
+  nav[aria-label="Primary"],
+  .print\:hidden {
+    display: none !important;
+  }
 }

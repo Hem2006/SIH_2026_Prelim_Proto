@@ -254,8 +254,22 @@ export const initialSectorRules = {
     "≥98% diagnostic accuracy",
     "zero patient complaints",
     "CDSCO standards alignment"
+  ],
+  "Roadworks": [
+    "≥20% reduction in surface defects",
+    "pilot ran ≥90 days",
+    "no traffic safety incidents"
+  ],
+  "Food Technology": [
+    "≥95% batch quality compliance",
+    "zero contamination events",
+    "FSSAI standards alignment"
   ]
 };
+
+/* Sentinel used by the "Civic Domain" pickers. Choosing it reveals a free-text
+   field so a department can name a sector the registry doesn't carry yet. */
+export const OTHER_SECTOR = "Others";
 
 export const createPilotEscrow = (cost) => {
   const numCost = parseFloat(cost) || 750000;

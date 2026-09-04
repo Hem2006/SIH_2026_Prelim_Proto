@@ -56,6 +56,7 @@ import {
   initialVerifiers,
   initialOnboardingRequests,
   initialSectorRules,
+  OTHER_SECTOR,
   createPilotEscrow
 } from "./data/seedData";
 
@@ -97,7 +98,6 @@ export default function App() {
   const [toast, setToast] = useState(null);
 
   // Sidebar state
-  const [sidebarMobileOpen, setSidebarMobileOpen] = useState(false);
 
   // Show Toast helper
   const showToast = (message, type = "success") => {
@@ -138,91 +138,133 @@ export default function App() {
   const handleLogout = () => {
     setCurrentUser(null);
     setActiveRole(null);
-    setSidebarMobileOpen(false);
     showToast("Logged out successfully", "info");
   };
 
   const handleNavClick = (tab) => {
     setCurrentTab(tab);
-    setSidebarMobileOpen(false);
   };
 
   const getNavItems = () => {
     if (activeRole === "Startup") return [
-      { label: "Dashboard", tab: "dashboard", icon: <Home className="w-4 h-4" /> },
-      { label: "Discover Pilots", tab: "opportunities", icon: <Compass className="w-4 h-4" /> },
-      { label: "PFMS Escrow Tracker", tab: "escrow", icon: <CreditCard className="w-4 h-4" /> },
-      { label: "My Pilot Passport", tab: "passport", icon: <Award className="w-4 h-4" /> },
+      { label: "Dashboard", short: "Home", tab: "dashboard", icon: <Home className="w-4 h-4" /> },
+      { label: "Discover Pilots", short: "Pilots", tab: "opportunities", icon: <Compass className="w-4 h-4" /> },
+      { label: "PFMS Escrow Tracker", short: "Escrow", tab: "escrow", icon: <CreditCard className="w-4 h-4" /> },
+      { label: "My Pilot Passport", short: "Passport", tab: "passport", icon: <Award className="w-4 h-4" /> },
     ];
     if (activeRole === "Government Official") return [
-      { label: "Sponsor Hub", tab: "dashboard", icon: <Home className="w-4 h-4" /> },
-      { label: "Post a Pilot", tab: "post-pilot", icon: <Plus className="w-4 h-4" /> },
-      { label: "Browse Certified", tab: "browse-certified", icon: <Award className="w-4 h-4" /> },
-      { label: "Audit Defense Record", tab: "procurement-history", icon: <ShieldCheck className="w-4 h-4" /> },
+      { label: "Sponsor Hub", short: "Hub", tab: "dashboard", icon: <Home className="w-4 h-4" /> },
+      { label: "Post a Pilot", short: "Post", tab: "post-pilot", icon: <Plus className="w-4 h-4" /> },
+      { label: "Browse Certified", short: "Certified", tab: "browse-certified", icon: <Award className="w-4 h-4" /> },
+      { label: "Audit Defense Record", short: "Audit", tab: "procurement-history", icon: <ShieldCheck className="w-4 h-4" /> },
     ];
     if (activeRole === "Verifier") return [
-      { label: "Pending Verifications", tab: "pending", icon: <Clock className="w-4 h-4" /> },
-      { label: "Verification History", tab: "history", icon: <CheckCircle className="w-4 h-4" /> },
+      { label: "Pending Verifications", short: "Pending", tab: "pending", icon: <Clock className="w-4 h-4" /> },
+      { label: "Verification History", short: "History", tab: "history", icon: <CheckCircle className="w-4 h-4" /> },
     ];
     if (activeRole === "Admin") return [
-      { label: "System Analytics", tab: "analytics", icon: <BarChart3 className="w-4 h-4" /> },
-      { label: "Verifier Management", tab: "verifiers", icon: <Users className="w-4 h-4" /> },
-      { label: "Official Approvals", tab: "onboarding", icon: <UserCheck className="w-4 h-4" /> },
-      { label: "Success Criteria", tab: "rules", icon: <Settings className="w-4 h-4" /> },
-      { label: "Registry Oversight", tab: "oversight", icon: <Database className="w-4 h-4" /> },
+      { label: "System Analytics", short: "Stats", tab: "analytics", icon: <BarChart3 className="w-4 h-4" /> },
+      { label: "Verifier Management", short: "Verifiers", tab: "verifiers", icon: <Users className="w-4 h-4" /> },
+      { label: "Official Approvals", short: "Approvals", tab: "onboarding", icon: <UserCheck className="w-4 h-4" /> },
+      { label: "Success Criteria", short: "Criteria", tab: "rules", icon: <Settings className="w-4 h-4" /> },
+      { label: "Registry Oversight", short: "Registry", tab: "oversight", icon: <Database className="w-4 h-4" /> },
     ];
     return [];
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F7F7] font-sans">
-      {/* ===== SIDEBAR (only when logged in) ===== */}
-      {currentUser && (
-        <>
-          {sidebarMobileOpen && (
-            <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={() => setSidebarMobileOpen(false)} />
-          )}
-          <aside className={`fixed top-0 left-0 h-full w-[230px] bg-sidebar z-50 flex flex-col transition-transform duration-200 ${sidebarMobileOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}>
-            {/* Brand */}
-            <div className="px-5 py-4 flex items-center gap-2.5 border-b border-white/10">
-              <div className="bg-sidebar-active text-white p-1.5 rounded-md">
-                <ShieldCheck className="w-5 h-5" />
-              </div>
-              <div className="min-w-0">
-                <span className="font-bold text-white text-sm tracking-wide block">PRECEDENT</span>
-                <span className="text-[9px] text-slate-400 tracking-widest uppercase block">Procurement Hub</span>
-              </div>
-              <button onClick={() => setSidebarMobileOpen(false)} className="ml-auto text-slate-400 hover:text-white lg:hidden">
-                <X className="w-5 h-5" />
-              </button>
+    <div className="min-h-screen bg-sand font-sans">
+      {/* ===== MAIN CONTENT AREA ===== */}
+      <div className="min-h-screen flex flex-col">
+        {/* ===== TOP NAVIGATION (only when logged in) ===== */}
+        {currentUser && (
+          <header className="sticky top-0 z-40 shadow-sm">
+            {/* 1 — state masthead */}
+            <div className="bg-sidebar-darker text-blue-100/70 text-[10px] px-4 py-1 flex items-center justify-between">
+              <span className="uppercase tracking-[0.14em] font-semibold flex items-center gap-2 min-w-0">
+                <StateSeal size={16} />
+                <span className="hidden sm:inline">Government of Maharashtra &middot; Urban Development Department</span>
+                <span className="sm:hidden truncate">Govt. of Maharashtra</span>
+              </span>
+              <span className="hidden md:inline font-mono">
+                GFR 2017 &middot; Rules 166 / 170 / 173
+              </span>
             </div>
 
-            {/* Profile */}
-            <div className="px-5 py-4 border-b border-white/10">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-sidebar-active flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                  {currentUser.name.charAt(0)}
+            {/* 2 — identity bar */}
+            <div className="bg-sidebar px-3 sm:px-4 py-2 sm:py-2.5 flex flex-wrap items-center justify-between gap-x-3 sm:gap-x-4 gap-y-2">
+              <div className="flex items-center gap-2.5 min-w-0 flex-shrink">
+                <StateSeal size={32} />
+                <div className="leading-none min-w-0">
+                  <span className="font-display font-extrabold text-white text-[15px] tracking-wide block truncate">AARAMBH</span>
+                  <span className="hidden sm:block text-[9px] text-blue-100/70 tracking-widest uppercase mt-0.5 truncate">
+                    Govt. of Maharashtra &middot; MSInS
+                  </span>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-white text-sm font-semibold truncate">{currentUser.name}</p>
-                  <p className="text-[10px] text-slate-400 truncate">{currentUser.startupName || currentUser.department || currentUser.organization || currentUser.role}</p>
+              </div>
+
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <div className="relative">
+                  <select
+                    value={currentUser.id}
+                    onChange={(e) => handleLogin(e.target.value)}
+                    className="bg-white/10 text-white text-xs border border-white/20 rounded px-2.5 py-1.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-sidebar-accent font-medium appearance-none pr-7 max-w-[150px] sm:max-w-none truncate"
+                  >
+                    <option disabled className="text-slate-700">Switch Role/User...</option>
+                    <option value="ram" className="text-slate-700">Ram (Startup)</option>
+                    <option value="arjun" className="text-slate-700">Arjun (Official - Pune)</option>
+                    <option value="meera" className="text-slate-700">Meera (Official - Nagpur)</option>
+                    <option value="kavita" className="text-slate-700">Dr. Kavita (Verifier)</option>
+                    <option value="admin" className="text-slate-700">MSInS Admin</option>
+                  </select>
+                  <ChevronDown className="w-3 h-3 text-blue-100/70 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+
+                <div className="hidden sm:flex items-center gap-2.5 pl-3 border-l border-white/15">
+                  <div className="text-right leading-tight">
+                    <p className="text-xs font-semibold text-white">{currentUser.name}</p>
+                    <p className="text-[10px] text-blue-100/70">
+                      {currentUser.startupName || currentUser.department || currentUser.organization || currentUser.role}
+                    </p>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-sidebar-active flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                    {currentUser.name.charAt(0)}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pl-3 border-l border-white/15">
+                  <button
+                    onClick={handleResetData}
+                    title="Reset sandbox data"
+                    className="text-blue-100/70 hover:text-white transition p-1"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    title="Sign out"
+                    className="text-blue-100/75 hover:text-rose-300 transition p-1"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             </div>
 
-            {/* Navigation */}
-            <nav className="flex-1 overflow-y-auto scrollbar-thin py-3">
-              <div className="px-5 mb-2">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{activeRole}</span>
-              </div>
+            {/* 3 — section tabs */}
+            <div className="relative bg-white hidden sm:block">
+            <nav className="border-b border-slate-200 px-4 flex items-center gap-1 overflow-x-auto scrollbar-thin scroll-smooth">
+              <span className="hidden sm:block text-[10px] font-bold text-sidebar-active uppercase tracking-widest pr-4 mr-1 border-r border-slate-200 py-3 flex-shrink-0">
+                {activeRole}
+              </span>
               {getNavItems().map(item => (
                 <button
                   key={item.tab}
                   onClick={() => handleNavClick(item.tab)}
-                  className={`w-full flex items-center gap-3 px-5 py-2.5 text-[13px] font-medium transition-colors ${
+                  className={`flex items-center gap-2 px-3.5 py-3 text-[13px] font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${
                     currentTab === item.tab
-                      ? "bg-sidebar-darker text-sidebar-active border-r-[3px] border-sidebar-active"
-                      : "text-slate-300 hover:text-white hover:bg-sidebar-hover"
+                      ? "border-sidebar-active text-sidebar font-semibold"
+                      : "border-transparent text-slate-500 hover:text-sidebar hover:border-slate-300"
                   }`}
                 >
                   {item.icon}
@@ -230,89 +272,50 @@ export default function App() {
                 </button>
               ))}
             </nav>
-
-            {/* Sidebar footer */}
-            <div className="px-5 py-3 border-t border-white/10 space-y-2">
-              <button
-                onClick={handleResetData}
-                className="flex items-center gap-2 text-slate-500 hover:text-slate-300 text-[11px] font-medium transition w-full"
-              >
-                <RefreshCw className="w-3 h-3" /> Reset Sandbox Data
-              </button>
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 text-slate-400 hover:text-rose-400 text-xs font-medium transition w-full"
-              >
-                <LogOut className="w-3.5 h-3.5" /> Sign Out
-              </button>
-            </div>
-          </aside>
-        </>
-      )}
-
-      {/* ===== MAIN CONTENT AREA ===== */}
-      <div className={currentUser ? "lg:ml-[230px] min-h-screen flex flex-col" : "min-h-screen flex flex-col"}>
-        {/* Top Header (only when logged in) */}
-        {currentUser && (
-          <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-            <div className="flex items-center justify-between h-[50px] px-4">
-              <div className="flex items-center gap-3">
-                <button onClick={() => setSidebarMobileOpen(true)} className="lg:hidden text-slate-500 hover:text-slate-800 p-1">
-                  <Menu className="w-5 h-5" />
-                </button>
-                <h2 className="text-sm font-semibold text-slate-600 hidden sm:block">
-                  {activeRole === "Startup" && currentTab === "dashboard" && "Startup Dashboard"}
-                  {activeRole === "Startup" && currentTab === "opportunities" && "Discover Pilots"}
-                  {activeRole === "Startup" && currentTab === "escrow" && "PFMS Milestone Escrow & Disbursement Station"}
-                  {activeRole === "Startup" && currentTab === "passport" && "Pilot Passport"}
-                  {activeRole === "Government Official" && currentTab === "dashboard" && "Sponsor Hub"}
-                  {activeRole === "Government Official" && currentTab === "post-pilot" && "Post a Pilot"}
-                  {activeRole === "Government Official" && currentTab === "browse-certified" && "Browse Certified Pilots"}
-                  {activeRole === "Government Official" && currentTab === "procurement-history" && "Audit Defense Record"}
-                  {activeRole === "Verifier" && currentTab === "pending" && "Pending Verifications"}
-                  {activeRole === "Verifier" && currentTab === "history" && "Verification History"}
-                  {activeRole === "Admin" && currentTab === "analytics" && "System Analytics"}
-                  {activeRole === "Admin" && currentTab === "verifiers" && "Verifier Management"}
-                  {activeRole === "Admin" && currentTab === "onboarding" && "Official Approvals"}
-                  {activeRole === "Admin" && currentTab === "rules" && "Success Criteria"}
-                  {activeRole === "Admin" && currentTab === "oversight" && "Registry Oversight"}
-                </h2>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="relative">
-                  <select
-                    value={currentUser.id}
-                    onChange={(e) => handleLogin(e.target.value)}
-                    className="bg-slate-50 text-slate-700 text-xs border border-slate-200 rounded px-2.5 py-1.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-sidebar-active font-medium appearance-none pr-7"
-                  >
-                    <option disabled>Switch Role/User...</option>
-                    <option value="ram">Ram (Startup)</option>
-                    <option value="arjun">Arjun (Official - Pune)</option>
-                    <option value="meera">Meera (Official - Nagpur)</option>
-                    <option value="kavita">Dr. Kavita (Verifier)</option>
-                    <option value="admin">MSInS Admin</option>
-                  </select>
-                  <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
-                <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-slate-200">
-                  <div className="text-right">
-                    <p className="text-xs font-semibold text-slate-700 leading-tight">{currentUser.name}</p>
-                    <p className="text-[10px] text-slate-400 leading-tight">{currentUser.role}</p>
-                  </div>
-                  <div className="w-8 h-8 rounded-full bg-sidebar flex items-center justify-center text-white text-xs font-bold">
-                    {currentUser.name.charAt(0)}
-                  </div>
-                </div>
-              </div>
+            {/* the tab strip scrolls on narrow screens — fade the edge so that reads as swipeable */}
+            <div className="sm:hidden pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-white via-white/85 to-transparent" />
             </div>
           </header>
         )}
 
+        {/* ===== PHONE TAB BAR =====
+            Phones get a floating capsule at the thumb end instead of the desktop
+            tab strip; the strip above is hidden below `sm`. Translucent over the
+            page so scrolled content shows through, and it sits above the iOS home
+            indicator via safe-area inset. */}
+        {currentUser && (
+          <nav
+            className="sm:hidden fixed inset-x-0 bottom-0 z-40 pointer-events-none print:hidden"
+            style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 10px)" }}
+            aria-label="Primary"
+          >
+            <div className="pointer-events-auto mx-auto w-fit max-w-[calc(100vw-20px)] flex items-center gap-0.5 px-1.5 py-1.5 rounded-[26px] bg-white/80 backdrop-blur-xl border border-black/[0.06] shadow-[0_8px_28px_rgba(10,40,54,0.16)]">
+              {getNavItems().map(item => {
+                const active = currentTab === item.tab;
+                return (
+                  <button
+                    key={item.tab}
+                    onClick={() => handleNavClick(item.tab)}
+                    aria-current={active ? "page" : undefined}
+                    className={`flex flex-col items-center justify-center gap-0.5 rounded-[20px] px-3 py-1.5 min-w-[58px] transition-colors ${
+                      active ? "bg-sidebar text-white" : "text-slate-500 active:bg-slate-500/10"
+                    }`}
+                  >
+                    {React.cloneElement(item.icon, { className: "w-[19px] h-[19px]" })}
+                    <span className="text-[10px] font-semibold leading-none tracking-tight">
+                      {item.short || item.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+        )}
+
         {/* Main Content */}
-        <main className={currentUser ? "flex-grow p-4 sm:p-6" : "flex-grow"}>
+        <main className={currentUser ? "flex-grow p-4 sm:p-6 pb-28 sm:pb-6" : "flex-grow"}>
           {toast && (
-            <div className={`fixed bottom-5 right-5 z-[60] p-3.5 rounded-lg shadow-lg text-white flex items-center gap-3 max-w-sm border text-sm ${
+            <div className={`fixed bottom-24 sm:bottom-5 right-4 sm:right-5 left-4 sm:left-auto z-[60] p-3.5 rounded-lg shadow-lg text-white flex items-center gap-3 max-w-sm border text-sm ${
               toast.type === "success" ? "bg-emerald-600 border-emerald-500" :
               toast.type === "info" ? "bg-sidebar border-sidebar-light" : "bg-rose-600 border-rose-500"
             }`}>
@@ -380,6 +383,7 @@ export default function App() {
                   adoptionModalOpen={adoptionModalOpen}
                   setAdoptionModalOpen={setAdoptionModalOpen}
                   sectorRules={sectorRules}
+                  setSectorRules={setSectorRules}
                 />
               )}
               {activeRole === "Verifier" && (
@@ -448,11 +452,12 @@ export default function App() {
           />
         )}
 
-        {/* Footer */}
+        {/* Footer — the signed-out landing page carries its own */}
+        {currentUser && (
         <footer className="bg-white border-t border-slate-200 py-4 mt-auto">
           <div className="px-6 text-center sm:flex sm:justify-between sm:items-center">
             <p className="text-xs text-slate-400">
-              &copy; 2026 Precedent Hub &mdash; Maharashtra State Innovation Society (MSInS) &amp; DPIIT
+              &copy; 2026 Aarambh Hub &mdash; Maharashtra State Innovation Society (MSInS) &amp; DPIIT
             </p>
             <div className="mt-2 sm:mt-0 flex justify-center gap-3 text-[10px] font-semibold uppercase text-slate-400 tracking-wider">
               <span>GFR 2017 Compliant</span>
@@ -461,6 +466,7 @@ export default function App() {
             </div>
           </div>
         </footer>
+        )}
       </div>
     </div>
   );
@@ -469,6 +475,35 @@ export default function App() {
 /* ==========================================================
    LOGIN PORTAL & REGISTER
    ========================================================== */
+const HERO_IMG = "/mumbai-skyline.webp";
+const JOURNEY_IMG = "/mumbai-waterfront.jpg";
+const SEALINK_IMG = "/mumbai-sealink.jpg";
+const EMBLEM_IMG = "/maharashtra-emblem.webp";
+
+/* The supplied emblem artwork is 400x480: the seal itself sits in a ~300x300
+   region at (50,15), with the "Government of Maharashtra" wordmark beneath it.
+   StateSeal crops to the seal alone so it can sit inline at small sizes; the
+   full artwork is used where that wordmark is actually wanted. */
+function StateSeal({ size = 34, className = "" }) {
+  const k = size / 300;
+  return (
+    <span
+      className={`inline-block overflow-hidden flex-shrink-0 ${className}`}
+      style={{ width: size, height: size }}
+    >
+      <img
+        src={EMBLEM_IMG}
+        alt="Government of Maharashtra emblem"
+        style={{
+          width: 400 * k, height: 480 * k,
+          marginLeft: -50 * k, marginTop: -15 * k,
+          maxWidth: "none",
+        }}
+      />
+    </span>
+  );
+}
+
 function LoginPortal({ handleLogin, setRegistrationMode, handleResetData }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -476,11 +511,11 @@ function LoginPortal({ handleLogin, setRegistrationMode, handleResetData }) {
   const [loginError, setLoginError] = useState("");
 
   const demoAccounts = [
-    { key: "ram", name: "Ram", role: "Startup", org: "AquaSense Technologies", badge: "bg-blue-100 text-blue-800" },
-    { key: "arjun", name: "Arjun", role: "Official — Pune", org: "Pune Municipal Corp", badge: "bg-purple-100 text-purple-800" },
-    { key: "meera", name: "Meera", role: "Official — Nagpur", org: "Nagpur Municipal Corp", badge: "bg-purple-100 text-purple-800" },
-    { key: "kavita", name: "Dr. Kavita Rao", role: "Verifier", org: "Technical Evaluation Board", badge: "bg-amber-100 text-amber-800" },
-    { key: "admin", name: "MSInS Admin", role: "Admin", org: "Maharashtra State Innovation Society", badge: "bg-rose-100 text-rose-800" },
+    { key: "ram", name: "Ram", role: "Startup", org: "AquaSense Technologies" },
+    { key: "arjun", name: "Arjun", role: "Official — Pune", org: "Pune Municipal Corp" },
+    { key: "meera", name: "Meera", role: "Official — Nagpur", org: "Nagpur Municipal Corp" },
+    { key: "kavita", name: "Dr. Kavita Rao", role: "Verifier", org: "Technical Evaluation Board" },
+    { key: "admin", name: "MSInS Admin", role: "Admin", org: "Maharashtra State Innovation Society" },
   ];
 
   const handleManualLogin = (e) => {
@@ -496,168 +531,464 @@ function LoginPortal({ handleLogin, setRegistrationMode, handleResetData }) {
     handleLogin(match.key);
   };
 
-  return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
-      {/* LEFT — Illustration / Brand Panel */}
-      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-blue-600 via-blue-700 to-sidebar-darker overflow-hidden items-center justify-center p-12">
-        {/* decorative blurred blobs */}
-        <div className="absolute -top-24 -left-24 w-80 h-80 bg-blue-400/30 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-sidebar-active/20 rounded-full blur-3xl" />
-        <div className="absolute top-1/3 right-10 w-40 h-40 bg-amber-400/20 rounded-full blur-3xl" />
+  const quickLinks = [
+    { icon: <Compass className="w-6 h-6" />, title: "Discover Pilots", desc: "Open municipal challenges accepting startup proposals." },
+    { icon: <Award className="w-6 h-6" />, title: "Pilot Passport", desc: "A portable, verifiable record of certified outcomes." },
+    { icon: <CreditCard className="w-6 h-6" />, title: "PFMS Escrow", desc: "Milestone tranches released within 48 hours." },
+    { icon: <ShieldCheck className="w-6 h-6" />, title: "Audit Defence", desc: "A CVC/CAG-ready docket behind every contract." },
+  ];
 
-        <div className="relative z-10 flex flex-col items-center max-w-md">
-          <div className="flex items-center gap-2.5 mb-10 self-start">
-            <div className="bg-white/10 border border-white/20 text-white p-2 rounded-lg">
-              <ShieldCheck className="w-6 h-6" />
+  const pillars = [
+    { n: "01", t: "Sponsor a Pilot", d: "A department posts a measurable civic problem with a budget cap and success criteria.", tone: "terracotta" },
+    { n: "02", t: "Verify Independently", d: "An empanelled technical auditor scores the evidence against the published criteria.", tone: "white" },
+    { n: "03", t: "Certify the Precedent", d: "A passing pilot becomes a citable precedent with a permanent audit hash.", tone: "navy" },
+    { n: "04", t: "Fast-Track Adoption", d: "Any other authority may adopt that precedent without re-tendering.", tone: "steel" },
+  ];
+
+  const topics = [
+    { icon: <FileText className="w-4 h-4" />, t: "Procurement Manual" },
+    { icon: <ScrollText className="w-4 h-4" />, t: "GFR 2017 Rules" },
+    { icon: <UserCheck className="w-4 h-4" />, t: "DPIIT Registration" },
+    { icon: <Check className="w-4 h-4" />, t: "Verification Criteria" },
+    { icon: <Receipt className="w-4 h-4" />, t: "Escrow & PFMS" },
+    { icon: <ShieldCheck className="w-4 h-4" />, t: "Audit Docket" },
+    { icon: <Handshake className="w-4 h-4" />, t: "Adoption Contracts" },
+    { icon: <Settings className="w-4 h-4" />, t: "Sector Rules" },
+  ];
+
+  const toneMap = {
+    terracotta: "bg-terracotta-600 text-white border-terracotta-600",
+    white: "bg-white text-navy-900 border-sand-line",
+    navy: "bg-navy-600 text-white border-navy-600",
+    steel: "bg-steel-600 text-white border-steel-600",
+  };
+
+  return (
+    <div className="bg-sand">
+      {/* ============ GOVERNMENT MASTHEAD ============ */}
+      <div className="bg-navy-900 text-navy-200">
+        <div className="shell flex items-center justify-between gap-4 py-1.5">
+          <span className="text-[10px] uppercase tracking-[0.14em] font-semibold">
+            Government of Maharashtra &middot; Urban Development Department
+          </span>
+          <span className="hidden md:inline text-[10px] font-mono text-navy-200/70">
+            GFR 2017 &middot; Rules 166 / 170 / 173
+          </span>
+        </div>
+      </div>
+
+      {/* ============ TOP NAV ============ */}
+      <header className="bg-white border-b border-sand-line sticky top-0 z-40">
+        <div className="shell flex items-center justify-between h-[72px]">
+          <div className="flex items-center gap-2.5">
+            <StateSeal size={38} />
+            <div className="leading-none">
+              <p className="font-display font-extrabold text-navy-900 text-[17px] tracking-display">AARAMBH</p>
+              <p className="text-[10px] text-slate-400 mt-1 tracking-wide">Govt. of Maharashtra &middot; MSInS</p>
             </div>
-            <span className="text-white font-bold text-lg tracking-wide">PRECEDENT</span>
+          </div>
+          <nav className="hidden lg:flex items-center gap-8 text-[13px] font-medium text-navy-800">
+            <a href="#framework" className="hover:text-terracotta-600 transition">Framework</a>
+            <a href="#process" className="hover:text-terracotta-600 transition">How It Works</a>
+            <a href="#topics" className="hover:text-terracotta-600 transition">Resources</a>
+            <a href="#services" className="hover:text-terracotta-600 transition">Outcomes</a>
+          </nav>
+          <a href="#signin" className="btn-primary !py-2.5 !px-5">
+            Sign In <ArrowRight className="w-3.5 h-3.5" />
+          </a>
+        </div>
+      </header>
+
+      {/* ============ HERO ============ */}
+      <section className="bg-white">
+        <div className="shell grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)] gap-12 xl:gap-16 items-center py-16 lg:py-24">
+          <div>
+            <span className="eyebrow">Maharashtra Innovation Procurement Sandbox</span>
+            <h1 className="font-display text-[2.7rem] sm:text-[3.4rem] xl:text-[3.9rem] font-extrabold leading-[1.04] mt-5 text-navy-900">
+              Government Procurement Making Innovation Easier.
+            </h1>
+            <p className="text-[16px] leading-relaxed text-slate-500 mt-6 max-w-lg">
+              Sponsor public pilots, certify the outcome through independent technical
+              verification, and fast-track scaled adoption — all under the General
+              Financial Rules, 2017.
+            </p>
+            <div className="flex flex-wrap gap-3 mt-9">
+              <a href="#signin" className="btn-primary">
+                Enter the Sandbox <ArrowRight className="w-4 h-4" />
+              </a>
+              <a href="#framework" className="btn-outline">Read the Framework</a>
+            </div>
           </div>
 
-          {/* Isometric-style dashboard mockup */}
-          <div className="relative w-72 h-52 mb-12">
-            <div className="absolute inset-0 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 shadow-2xl p-5 -rotate-3">
-              <div className="flex items-end gap-2.5 h-24">
-                {[40, 65, 45, 85, 60, 95].map((h, i) => (
-                  <div key={i} className="flex-1 rounded-t-sm bg-gradient-to-t from-sidebar-active to-blue-300" style={{ height: `${h}%` }} />
+          <div className="relative">
+            <img
+              src={HERO_IMG}
+              alt="Mumbai skyline: high-rise construction above dense low-rise neighbourhoods"
+              className="w-full h-[380px] lg:h-[500px] object-cover rounded-2xl"
+            />
+            {/* figure lifted out of the photo, as in the reference */}
+            <div className="absolute -bottom-7 -left-7 hidden sm:block bg-white rounded-xl border border-sand-line shadow-lg px-6 py-5 max-w-[220px]">
+              <p className="font-display text-[2.1rem] font-extrabold text-terracotta-600 leading-none">210</p>
+              <p className="text-[12px] font-bold text-navy-900 mt-1.5">Tender days eliminated</p>
+              <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                per adopted precedent, against a conventional tender cycle
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ============ QUICK LINKS ============ */}
+      <section className="bg-white border-t border-sand-line">
+        <div className="shell grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-sand-line">
+          {quickLinks.map((q) => (
+            <a key={q.title} href="#signin" className="group px-0 sm:px-8 lg:px-9 first:lg:pl-0 last:lg:pr-0 py-9">
+              <span className="text-terracotta-600 inline-block">{q.icon}</span>
+              <h3 className="font-display font-bold text-[15px] text-navy-900 mt-4 flex items-center gap-1.5">
+                {q.title}
+                <ArrowUpRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-terracotta-600 transition" />
+              </h3>
+              <p className="text-[13px] text-slate-500 mt-2 leading-relaxed">{q.desc}</p>
+            </a>
+          ))}
+        </div>
+      </section>
+
+      {/* ============ STATUTORY NOTICE ============ */}
+      <section id="framework" className="scroll-mt-20 py-16 lg:py-20">
+        <div className="shell">
+          <div className="relative overflow-hidden rounded-2xl bg-navy-600 hatch px-8 sm:px-12 py-11">
+            <div className="relative z-10 max-w-2xl">
+              <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-terracotta-200">
+                <span className="w-[7px] h-[7px] rotate-45 bg-terracotta-300 inline-block" />
+                General Financial Rules, 2017
+              </span>
+              <h2 className="font-display text-white text-[1.7rem] sm:text-[2.05rem] font-bold leading-tight mt-4">
+                Rules 170, 173 &amp; 166 already permit this. Aarambh makes them usable.
+              </h2>
+              <p className="text-navy-100 text-[14px] leading-relaxed mt-4">
+                Earnest money deposit waived for DPIIT-recognised startups. Prior turnover
+                and experience criteria relaxed. A certified pilot adopted by one authority
+                may be procured by another without a fresh tender.
+              </p>
+              <div className="flex flex-wrap gap-2.5 mt-7">
+                {["Rule 170 — EMD exemption", "Rule 173 — Criteria relaxation", "Rule 166 — Precedent adoption"].map((r) => (
+                  <span key={r} className="font-mono text-[11px] text-white/90 border border-white/25 rounded px-3 py-1.5">
+                    {r}
+                  </span>
                 ))}
               </div>
-              <svg viewBox="0 0 240 40" className="w-full h-8 mt-2" preserveAspectRatio="none">
-                <polyline points="0,30 40,20 80,25 120,10 160,15 200,4 240,8" fill="none" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <div className="flex justify-between text-white/50 text-[9px] mt-1 font-semibold uppercase tracking-wider">
-                <span>Applied</span><span>Certified</span><span>Adopted</span>
+            </div>
+            <ScrollText className="absolute -right-8 -bottom-10 w-64 h-64 text-white/[0.06] hidden md:block" strokeWidth={1} />
+          </div>
+        </div>
+      </section>
+
+      {/* ============ STATE BAND ============ */}
+      <section className="relative isolate">
+        <img
+          src={SEALINK_IMG}
+          alt="Bandra–Worli Sea Link, Mumbai"
+          className="w-full h-[320px] sm:h-[400px] object-cover"
+        />
+        <div className="absolute inset-0 bg-navy-900/75" />
+        <div className="absolute inset-0 flex items-center">
+          <div className="shell grid grid-cols-1 sm:grid-cols-[auto_minmax(0,1fr)] gap-7 sm:gap-9 items-center">
+            <StateSeal size={92} className="hidden sm:block" />
+            <div>
+              <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-terracotta-200">
+                <span className="w-1.5 h-1.5 bg-terracotta-300 rotate-45 inline-block" />
+                Maharashtra first
+              </span>
+              <h2 className="font-display text-white font-extrabold text-[1.9rem] sm:text-[2.5rem] leading-[1.1] mt-4 max-w-[19ch]">
+                Infrastructure this state already builds well.
+              </h2>
+              <p className="text-[15px] leading-relaxed text-navy-100/85 mt-4 max-w-[54ch]">
+                Maharashtra runs some of the most demanding civic infrastructure in India.
+                Aarambh gives its municipal corporations a lawful way to buy the next
+                generation of it from the startups building it — and a record that
+                survives audit.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ============ MISSION + PILLARS ============ */}
+      <section id="process" className="scroll-mt-20 pb-16 lg:pb-24">
+        <div className="shell">
+          <div className="flex flex-col lg:flex-row lg:items-center gap-8 lg:gap-12">
+            <div>
+              <span className="eyebrow">Our Mandate</span>
+              <h2 className="font-display text-[1.9rem] sm:text-[2.4rem] font-bold leading-[1.18] mt-5 max-w-2xl text-navy-900">
+                To make public procurement{" "}
+                <span className="text-terracotta-600">open to startups</span> and{" "}
+                <span className="text-terracotta-600">provable to auditors</span> — turning a
+                nine-month tender into a verified 48-hour disbursal.
+              </h2>
+            </div>
+            <div className="hidden lg:flex flex-col items-center justify-center w-[128px] h-[128px] rounded-full border-2 border-terracotta-200 text-center flex-shrink-0">
+              <ShieldCheck className="w-6 h-6 text-terracotta-600" />
+              <p className="text-[10px] font-bold uppercase tracking-wider text-navy-900 mt-2 leading-tight">GFR 2017<br />Compliant</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-12">
+            {pillars.map((p) => (
+              <div key={p.n} className={`border rounded-xl p-7 flex flex-col ${toneMap[p.tone]}`}>
+                <span className={`font-mono text-[12px] ${p.tone === "white" ? "text-terracotta-600" : "text-white/60"}`}>{p.n}</span>
+                <h3 className={`font-display font-bold text-[17px] mt-4 ${p.tone === "white" ? "text-navy-900" : "text-white"}`}>{p.t}</h3>
+                <p className={`text-[13px] leading-relaxed mt-2.5 ${p.tone === "white" ? "text-slate-500" : "text-white/75"}`}>{p.d}</p>
               </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ============ ORIGIN ============ */}
+      <section className="bg-white border-y border-sand-line py-16 lg:py-24">
+        <div className="shell grid grid-cols-1 lg:grid-cols-2 gap-12 xl:gap-20 items-center">
+          <img
+            src={JOURNEY_IMG}
+            alt="Mumbai waterfront"
+            className="w-full h-[300px] lg:h-[420px] object-cover rounded-2xl"
+          />
+          <div>
+            <span className="eyebrow">Where This Comes From</span>
+            <p className="font-display text-[4.5rem] xl:text-[5.5rem] font-extrabold text-navy-200 leading-[0.9] mt-5">2017</p>
+            <h2 className="font-display text-[1.6rem] font-bold text-navy-900 mt-3">The enabling rules</h2>
+            <p className="text-[14px] text-slate-500 leading-relaxed mt-5 max-w-lg">
+              The General Financial Rules were amended in 2017 to let public authorities
+              buy from startups without earnest money deposits or prior-turnover tests.
+              Nine years on, most departments still tender the long way — because nothing
+              recorded the outcome of a pilot in a form an auditor would accept.
+            </p>
+            <p className="text-[14px] text-slate-500 leading-relaxed mt-4 max-w-lg">
+              Aarambh is that record.
+            </p>
+            <a href="#signin" className="btn-outline mt-8">
+              See a certified precedent <ArrowRight className="w-4 h-4" />
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* ============ TOPICS ============ */}
+      <section id="topics" className="scroll-mt-20 py-16 lg:py-20">
+        <div className="shell">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <span className="eyebrow">Reference Material</span>
+              <h2 className="font-display text-[1.9rem] sm:text-[2.2rem] font-bold mt-4 text-navy-900">Discover Popular Topics</h2>
+            </div>
+            <a href="#signin" className="text-[13px] font-bold text-terracotta-600 inline-flex items-center gap-1.5 hover:gap-2.5 transition-all">
+              View all resources <ArrowRight className="w-3.5 h-3.5" />
+            </a>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-9">
+            {topics.map((t) => (
+              <a key={t.t} href="#signin"
+                 className="group bg-white border border-sand-line rounded-lg px-5 py-5 flex items-center gap-3.5 hover:border-terracotta-300 transition">
+                <span className="w-9 h-9 rounded bg-terracotta-50 text-terracotta-600 flex items-center justify-center flex-shrink-0">
+                  {t.icon}
+                </span>
+                <span className="text-[13.5px] font-semibold text-navy-900 leading-tight">{t.t}</span>
+                <ArrowUpRight className="w-3.5 h-3.5 text-slate-300 ml-auto group-hover:text-terracotta-600 transition" />
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ============ OUTCOMES ============ */}
+      <section id="services" className="scroll-mt-20 pb-16 lg:pb-20">
+        <div className="shell">
+          <div className="rounded-2xl bg-navy-800 hatch px-8 sm:px-12 py-12">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+              <div>
+                <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-terracotta-200">
+                  <span className="w-[7px] h-[7px] rotate-45 bg-terracotta-300 inline-block" />
+                  Sandbox to date
+                </span>
+                <h2 className="font-display text-white text-[1.8rem] sm:text-[2.1rem] font-bold leading-tight mt-4">
+                  What the framework has returned so far.
+                </h2>
+              </div>
+              <p className="text-navy-100 text-[14px] leading-relaxed lg:pt-8">
+                Figures from the live sandbox across Pune, Nagpur and Greater Mumbai
+                municipal corporations — every one traceable to a signed docket.
+              </p>
             </div>
 
-            {/* Floating badge: percentage ring */}
-            <div className="absolute -top-6 -left-8 bg-white rounded-xl shadow-xl p-2.5 flex items-center gap-2 rotate-3">
-              <div className="w-8 h-8 rounded-full border-4 border-sidebar-active flex items-center justify-center">
-                <TrendingUp className="w-3.5 h-3.5 text-sidebar-active" />
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-white/15 rounded-xl overflow-hidden mt-11">
+              {[
+                ["48 hrs", "Milestone disbursal", "from verified delivery to funds in account"],
+                ["95/100", "Median audit score", "across independently certified pilots"],
+                ["₹56.5L", "Value unlocked", "in fast-tracked scaled adoption contracts"],
+                ["100%", "Dockets audit-ready", "CVC / CAG inspection format, generated on demand"],
+              ].map(([v, l, d]) => (
+                <div key={l} className="bg-navy-800 px-6 py-8">
+                  <p className="font-display text-[2.1rem] xl:text-[2.4rem] font-extrabold text-white leading-none">{v}</p>
+                  <p className="text-[13px] font-bold text-terracotta-200 mt-2.5">{l}</p>
+                  <p className="text-[11.5px] text-navy-200 mt-1.5 leading-snug">{d}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ============ SIGN IN ============ */}
+      <section id="signin" className="scroll-mt-20 bg-white border-t border-sand-line py-16 lg:py-24">
+        <div className="shell grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)] gap-12 xl:gap-20">
+          <div>
+            <span className="eyebrow">Sandbox Access</span>
+            <h2 className="font-display text-[2rem] sm:text-[2.4rem] font-bold leading-tight mt-5 text-navy-900">
+              Sign in to the procurement sandbox.
+            </h2>
+            <p className="text-[14px] text-slate-500 leading-relaxed mt-5 max-w-md">
+              This is a demonstration environment seeded with representative pilots,
+              verifications and adoption contracts. Choose any role below to explore
+              the workflow end to end.
+            </p>
+
+            <div className="mt-9 space-y-3">
+              {[
+                "Independent technical verification by empanelled auditors",
+                "PFMS-linked milestone escrow and direct benefit transfer",
+                "Immutable end-to-end audit trail for CVC / CAG inspection",
+              ].map((f) => (
+                <div key={f} className="flex items-start gap-2.5 text-[13px] text-slate-600">
+                  <Check className="w-4 h-4 text-terracotta-600 flex-shrink-0 mt-0.5" />
+                  <span>{f}</span>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-[11px] text-slate-400 mt-9 leading-relaxed max-w-md">
+              Authorised use only. Access to this portal is logged and monitored under the
+              Information Technology Act, 2000.
+            </p>
+          </div>
+
+          <div className="bg-sand border border-sand-line rounded-2xl p-7 sm:p-9">
+            <form onSubmit={handleManualLogin} className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-navy-800 mb-1.5">Username</label>
+                <input
+                  type="text"
+                  placeholder="e.g. ram, arjun, admin..."
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full bg-white border border-sand-line rounded px-3.5 py-2.5 text-sm text-navy-900 focus:outline-none focus:ring-2 focus:ring-terracotta-600/25 focus:border-terracotta-600"
+                />
               </div>
               <div>
-                <p className="text-[10px] font-bold text-slate-800 leading-none">+22%</p>
-                <p className="text-[8px] text-slate-400 leading-none mt-0.5">Efficiency</p>
-              </div>
-            </div>
-
-            {/* Floating badge: coin */}
-            <div className="absolute -top-4 -right-6 w-11 h-11 bg-amber-400 rounded-full shadow-xl flex items-center justify-center rotate-6">
-              <IndianRupee className="w-5 h-5 text-amber-900" />
-            </div>
-
-            {/* Floating badge: verified */}
-            <div className="absolute -bottom-5 -left-6 bg-white rounded-lg shadow-xl px-2.5 py-1.5 flex items-center gap-1.5">
-              <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
-              <span className="text-[9px] font-bold text-slate-700">DPIIT Verified</span>
-            </div>
-
-            {/* Floating badge: handshake */}
-            <div className="absolute -bottom-6 -right-4 w-12 h-12 bg-sidebar-active rounded-full shadow-xl flex items-center justify-center -rotate-6">
-              <Handshake className="w-6 h-6 text-white" />
-            </div>
-          </div>
-
-          <h1 className="text-white text-xl font-bold text-center">Startup-to-Scale Procurement, Simplified</h1>
-          <p className="text-blue-100/80 text-sm text-center mt-2 leading-relaxed">
-            Sponsor pilots, certify outcomes, and fast-track scaled adoption — all under one compliant, auditable sandbox.
-          </p>
-
-          <div className="mt-8 space-y-2.5 self-start">
-            {["GFR 2017 Rule 170 & 173 Compliant", "Independent Technical Verification", "End-to-End Audit Trail"].map((f, i) => (
-              <div key={i} className="flex items-center gap-2 text-blue-50/90 text-xs font-medium">
-                <div className="w-4 h-4 rounded-full bg-white/15 flex items-center justify-center flex-shrink-0">
-                  <Check className="w-2.5 h-2.5" />
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-navy-800 mb-1.5">Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter any password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-white border border-sand-line rounded px-3.5 py-2.5 pr-10 text-sm text-navy-900 focus:outline-none focus:ring-2 focus:ring-terracotta-600/25 focus:border-terracotta-600"
+                  />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-navy-700">
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
-                {f}
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
 
-      {/* RIGHT — Login Form */}
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-10 bg-white">
-        <div className="w-full max-w-sm">
-          <div className="flex lg:hidden items-center gap-2.5 mb-8 justify-center">
-            <div className="bg-sidebar text-white p-2 rounded-lg"><ShieldCheck className="w-5 h-5" /></div>
-            <span className="text-slate-800 font-bold text-lg tracking-wide">PRECEDENT</span>
-          </div>
+              {loginError && <p className="text-rose-600 text-[12px] font-semibold">{loginError}</p>}
 
-          <h2 className="text-2xl font-bold text-slate-800">Welcome back</h2>
-          <p className="text-sm text-slate-500 mt-1">Sign in to access the procurement sandbox.</p>
+              <button type="submit" className="btn-primary w-full">
+                Sign In <ArrowRight className="w-4 h-4" />
+              </button>
+            </form>
 
-          <form onSubmit={handleManualLogin} className="mt-6 space-y-3.5">
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Username</label>
-              <input
-                type="text"
-                placeholder="e.g. ram, arjun, admin..."
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sidebar-active/40 focus:border-sidebar-active"
-              />
+            <div className="my-7 flex items-center gap-3">
+              <div className="h-px bg-sand-line flex-1" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Or continue as</span>
+              <div className="h-px bg-sand-line flex-1" />
             </div>
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Password</label>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Enter any password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-sidebar-active/40 focus:border-sidebar-active"
-                />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+
+            <div className="space-y-2">
+              {demoAccounts.map(a => (
+                <button
+                  key={a.key}
+                  onClick={() => handleLogin(a.key)}
+                  className="group w-full flex items-center gap-3 bg-white border border-sand-line hover:border-terracotta-400 rounded-lg px-3.5 py-2.5 text-left transition"
+                >
+                  <span className="w-8 h-8 rounded-full bg-navy-600 flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0">
+                    {a.name.charAt(0)}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-bold text-navy-900 leading-tight">{a.name}</span>
+                    <span className="block text-[11px] text-slate-400 truncate">{a.role} &middot; {a.org}</span>
+                  </span>
+                  <ArrowRight className="w-3.5 h-3.5 text-slate-300 ml-auto flex-shrink-0 group-hover:text-terracotta-600 transition" />
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-7 pt-6 border-t border-sand-line">
+              <p className="text-[12px] font-semibold text-navy-800 mb-3">New here? Register to test onboarding.</p>
+              <div className="flex gap-2">
+                <button onClick={() => setRegistrationMode("startup")} className="flex-1 border border-navy-200 text-navy-800 hover:border-navy-600 py-2 rounded text-[12px] font-bold transition">
+                  Register Startup
+                </button>
+                <button onClick={() => setRegistrationMode("official")} className="flex-1 border border-navy-200 text-navy-800 hover:border-navy-600 py-2 rounded text-[12px] font-bold transition">
+                  Register Official
                 </button>
               </div>
-            </div>
-
-            {loginError && <p className="text-rose-500 text-[11px] font-semibold">{loginError}</p>}
-
-            <button type="submit" className="w-full bg-sidebar hover:bg-sidebar-dark text-white font-semibold py-2.5 rounded-lg text-sm flex items-center justify-center gap-2 transition shadow-sm">
-              Sign In <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </form>
-
-          <div className="my-6 flex items-center gap-3">
-            <div className="h-px bg-slate-200 flex-1" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Or use a demo account</span>
-            <div className="h-px bg-slate-200 flex-1" />
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {demoAccounts.map(a => (
-              <button
-                key={a.key}
-                onClick={() => handleLogin(a.key)}
-                title={`${a.name} — ${a.role} (${a.org})`}
-                className="flex items-center gap-2 border border-slate-200 hover:border-sidebar-active hover:bg-slate-50 rounded-full pl-1.5 pr-3 py-1.5 transition"
-              >
-                <div className="w-6 h-6 rounded-full bg-sidebar flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
-                  {a.name.charAt(0)}
-                </div>
-                <span className="text-xs font-semibold text-slate-700">{a.name}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-6 pt-5 border-t border-slate-200 text-center">
-            <p className="text-slate-500 text-[11px] mb-2.5 font-semibold">New here? Register to test onboarding.</p>
-            <div className="flex justify-center gap-2">
-              <button onClick={() => setRegistrationMode("startup")} className="border border-sidebar text-sidebar hover:bg-slate-50 py-1.5 px-3 rounded text-[11px] font-bold transition">
-                Register Startup
-              </button>
-              <button onClick={() => setRegistrationMode("official")} className="border border-sidebar text-sidebar hover:bg-slate-50 py-1.5 px-3 rounded text-[11px] font-bold transition">
-                Register Official
+              <button onClick={handleResetData} className="mt-4 text-[11px] text-slate-400 hover:text-terracotta-600 font-medium inline-flex items-center gap-1.5 transition">
+                <RefreshCw className="w-3 h-3" /> Reset sandbox data
               </button>
             </div>
-            <button onClick={handleResetData} className="mt-4 text-[10px] text-slate-400 hover:text-slate-600 font-medium inline-flex items-center gap-1">
-              <RefreshCw className="w-2.5 h-2.5" /> Reset sandbox data
-            </button>
           </div>
         </div>
-      </div>
+      </section>
+
+      {/* ============ FOOTER ============ */}
+      <footer className="bg-navy-900 text-navy-200">
+        <div className="shell py-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <StateSeal size={34} />
+              <span className="font-display font-extrabold text-white text-[15px] tracking-display">AARAMBH</span>
+            </div>
+            <p className="text-[12.5px] leading-relaxed mt-4 text-navy-200/80">
+              State Innovation Procurement Sandbox, operated by the Maharashtra State
+              Innovation Society under the Urban Development Department.
+            </p>
+          </div>
+          {[
+            ["Framework", ["GFR 2017 Rule 170", "GFR 2017 Rule 173", "GFR 2017 Rule 166", "Verification criteria"]],
+            ["For Startups", ["DPIIT registration", "Discover pilots", "Pilot passport", "Escrow & disbursal"]],
+            ["For Departments", ["Post a pilot", "Browse certified", "Adoption contracts", "Audit defence record"]],
+          ].map(([h, items]) => (
+            <div key={h}>
+              <p className="font-display font-bold text-white text-[13px] uppercase tracking-wider">{h}</p>
+              <ul className="mt-4 space-y-2.5">
+                {items.map((i) => (
+                  <li key={i}>
+                    <a href="#signin" className="text-[12.5px] hover:text-terracotta-200 transition">{i}</a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-white/10">
+          <div className="shell py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <p className="text-[11.5px] text-navy-200/70">
+              &copy; 2026 Aarambh &mdash; Maharashtra State Innovation Society (MSInS) &amp; DPIIT
+            </p>
+            <p className="text-[11px] font-mono text-navy-200/60">GFR 2017 &middot; Rules 166 / 170 / 173</p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
@@ -762,7 +1093,7 @@ function RegistrationView({
                     {dpiitStatus === "verifying" ? <span className="inline-block animate-spin w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full" /> : "Verify DPIIT"}
                   </button>
                 ) : (
-                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-3 py-1.5 rounded border border-emerald-200 flex items-center gap-1">&check; Verified</span>
+                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-3 py-1.5 rounded border border-emerald-200 flex items-center gap-1">✓ Verified</span>
                 )}
               </div>
               <p className="text-slate-400 text-[10px] mt-1 italic">* Simulated check via DPIIT national lookup service.</p>
@@ -862,6 +1193,8 @@ function StartupDashboard({
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sectorFilter, setSectorFilter] = useState("All");
+  // Filter offers only the domains that actually appear in the listings.
+  const sectorOptions = [...new Set(pilots.map(p => p.sector).filter(Boolean))].sort();
   const [budgetFilter, setBudgetFilter] = useState("All");
   const [applyModalOpen, setApplyModalOpen] = useState(null);
   const [proposedCost, setProposedCost] = useState("");
@@ -1029,13 +1362,19 @@ function StartupDashboard({
               ))}
             </div>
           )}
-          {/* Top stats row */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard icon={<Compass className="text-blue-500 w-5 h-5" />} label="Available Pilots" value={pilots.filter(p => p.status === "Open" || p.status === "Applied").length} />
-            <StatCard icon={<Clock className="text-amber-500 w-5 h-5" />} label="My Active / Running" value={runningCount} />
-            <StatCard icon={<Award className="text-sidebar-active w-5 h-5" />} label="Certified Precedents" value={certifiedCount} />
-            <StatCard icon={<ShieldCheck className="text-emerald-500 w-5 h-5" />} label="Scaled Adoptions" value={myAdoptions.filter(pr => pr.status === "Accepted").length} />
-          </div>
+          <DeskHeader
+            eyebrow="Startup Desk"
+            title={currentUser.startupName}
+            blurb="Apply to municipal pilots without earnest money or turnover tests. Each certified outcome is added to your Pilot Passport, where any department in the state can cite it."
+            standing={{ label: "DPIIT Recognition", value: currentUser.dpiitNo }}
+          />
+
+          <LedgerStrip items={[
+            { label: "Open to apply", value: pilots.filter(p => p.status === "Open" || p.status === "Applied").length, note: "Municipal pilots accepting proposals" },
+            { label: "Running now", value: runningCount, note: "Your pilots under way" },
+            { label: "Certified", value: certifiedCount, note: "Independently verified outcomes" },
+            { label: "Adopted elsewhere", value: myAdoptions.filter(pr => pr.status === "Accepted").length, note: "Other departments buying on your record" },
+          ]} />
 
           {/* Pilot status chart + applications table */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -1200,8 +1539,7 @@ function StartupDashboard({
             </div>
             <select value={sectorFilter} onChange={(e) => setSectorFilter(e.target.value)} className="border border-slate-200 rounded px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-sidebar-active">
               <option value="All">All Sectors</option>
-              <option value="Water & Sanitation">Water &amp; Sanitation</option>
-              <option value="Energy & Cleantech">Energy &amp; Cleantech</option>
+              {sectorOptions.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
             <select value={budgetFilter} onChange={(e) => setBudgetFilter(e.target.value)} className="border border-slate-200 rounded px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-sidebar-active">
               <option value="All">All Budgets</option>
@@ -1267,7 +1605,7 @@ function StartupDashboard({
                 </span>
                 <span className="text-slate-400 text-xs font-mono">Gateway: PFMS-DIRECT-PAY</span>
               </div>
-              <h2 className="text-lg font-bold mt-1">PFMS Milestone Escrow &amp; Disbursement Station</h2>
+              <h2 className="text-lg font-bold mt-1 text-white">PFMS Milestone Escrow &amp; Disbursement Station</h2>
               <p className="text-xs text-slate-300 max-w-2xl mt-0.5">
                 Government pilot tranches are held in statutory escrow and released within 48 hours of verified milestone delivery, bypassing conventional 9-month invoice delays.
               </p>
@@ -1275,7 +1613,7 @@ function StartupDashboard({
             <div className="bg-white/10 border border-white/15 px-4 py-2.5 rounded text-left sm:text-right flex-shrink-0">
               <span className="text-[10px] text-slate-300 uppercase font-bold block">Linked Settlement Account</span>
               <span className="text-xs font-mono font-bold text-white block">HDFC Bank &bull;&bull;&bull;&bull; 4921</span>
-              <span className="text-[9px] text-emerald-300 font-bold">&check; Direct Benefit Transfer Active</span>
+              <span className="text-[9px] text-emerald-300 font-bold">✓ Direct Benefit Transfer Active</span>
             </div>
           </div>
 
@@ -1413,14 +1751,14 @@ function StartupDashboard({
       {currentTab === "passport" && (
         <div className="max-w-4xl mx-auto space-y-5 animate-fade-in">
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-            <div className="bg-sidebar text-white px-6 py-8 text-center relative border-b-4 border-sidebar-active">
+            <div className="bg-sidebar text-white px-6 py-8 text-center relative border-b-4 border-sidebar-accent">
               <div className="absolute top-3 right-3 bg-emerald-500 text-white font-bold text-[9px] uppercase tracking-wider py-0.5 px-2 rounded shadow">
-                &check; Active Passport
+                ✓ Active Passport
               </div>
-              <Award className="w-12 h-12 mx-auto text-sidebar-active mb-2" />
-              <h2 className="text-xl font-bold tracking-wide">PRECEDENT COMPLIANCE PASSPORT</h2>
+              <Award className="w-12 h-12 mx-auto text-sidebar-accent mb-2" />
+              <h2 className="doc-serif text-xl font-bold tracking-wide text-white">PRECEDENT COMPLIANCE PASSPORT</h2>
               <p className="text-[10px] text-slate-300 tracking-widest uppercase mt-1">State Innovation Procurement Framework Certificate</p>
-              <div className="mt-1.5 text-[10px] text-slate-400 font-mono">Passport ID: PP-{currentUser.dpiitNo}-2026</div>
+              <div className="mt-1.5 text-[10px] text-blue-100/80 font-mono">Passport ID: PP-{currentUser.dpiitNo}-2026</div>
             </div>
 
             <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 border-b border-slate-200 text-sm">
@@ -1600,12 +1938,13 @@ function StartupDashboard({
 function OfficialDashboard({
   currentTab, setCurrentTab, currentUser, pilots, setPilots, procurements, setProcurements,
   showToast, selectedPilot, setSelectedPilot, adoptionModalOpen, setAdoptionModalOpen, sectorRules,
-  setDocketModalData, setContractModalData
+  setSectorRules, setDocketModalData, setContractModalData
 }) {
   const [newTitle, setNewTitle] = useState("");
   const [newBudget, setNewBudget] = useState("");
   const [newDuration, setNewDuration] = useState("");
   const [newSector, setNewSector] = useState("Water & Sanitation");
+  const [customSector, setCustomSector] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [feedbackPilotId, setFeedbackPilotId] = useState(null);
   const [sponsorNotes, setSponsorNotes] = useState("");
@@ -1621,15 +1960,23 @@ function OfficialDashboard({
   const handlePostPilot = (e) => {
     e.preventDefault();
     if (!newTitle || !newBudget || !newDuration) { showToast("Please fill in all fields", "error"); return; }
+    const isOther = newSector === OTHER_SECTOR;
+    const resolvedSector = isOther ? customSector.trim() : newSector;
+    if (isOther && !resolvedSector) { showToast("Please name the sector", "error"); return; }
+    // A newly named sector joins the registry so it can be filtered on and given
+    // success criteria by the admin, exactly like the built-in domains.
+    if (isOther && !sectorRules[resolvedSector]) {
+      setSectorRules(prev => ({ ...prev, [resolvedSector]: [] }));
+    }
     const newPilot = {
       id: `p_${Date.now()}`, title: newTitle, department: currentUser.department,
       sponsoringOfficialId: currentUser.id, sponsoringOfficialName: currentUser.name,
       budgetCap: parseFloat(newBudget), durationDays: parseInt(newDuration),
-      sector: newSector, description: newDesc, status: "Open",
+      sector: resolvedSector, description: newDesc, status: "Open",
       application: null, applications: [], evidence: null, verification: null
     };
     setPilots(prev => [newPilot, ...prev]);
-    setNewTitle(""); setNewBudget(""); setNewDuration(""); setNewDesc("");
+    setNewTitle(""); setNewBudget(""); setNewDuration(""); setNewDesc(""); setCustomSector("");
     setCurrentTab("dashboard");
     showToast(`New pilot opportunity "${newTitle}" posted!`, "success");
   };
@@ -1770,6 +2117,13 @@ function OfficialDashboard({
       {/* 1. DASHBOARD / SPONSOR HUB */}
       {currentTab === "dashboard" && (
         <div className="space-y-5 animate-fade-in">
+          <DeskHeader
+            eyebrow="Sponsor Desk"
+            title={currentUser.department}
+            blurb="Post a measurable civic problem with its success criteria fixed in advance, release milestone payments as work is verified, and adopt precedents other cities have already certified."
+            standing={{ label: "Employee ID", value: currentUser.employeeId }}
+          />
+
           <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
               <div>
@@ -2064,7 +2418,22 @@ function OfficialDashboard({
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Civic Domain / Sector</label>
               <select value={newSector} onChange={(e) => setNewSector(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-sidebar-active">
                 {Object.keys(sectorRules).map(s => <option key={s} value={s}>{s}</option>)}
+                <option value={OTHER_SECTOR}>{OTHER_SECTOR} — name a new domain</option>
               </select>
+              {newSector === OTHER_SECTOR && (
+                <div className="mt-2">
+                  <input
+                    type="text"
+                    value={customSector}
+                    onChange={(e) => setCustomSector(e.target.value)}
+                    placeholder="Name the sector, e.g. Solid Waste Management"
+                    className="w-full border border-sidebar-active/50 bg-terracotta-50 rounded px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-sidebar-active"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    This domain joins the registry once the pilot is posted. MSInS can then set its success criteria.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div>
@@ -2143,8 +2512,8 @@ function OfficialDashboard({
       {/* 4. PROCUREMENT HISTORY / AUDIT DEFENSE */}
       {currentTab === "procurement-history" && (
         <div className="space-y-4 animate-fade-in">
-          <div className="bg-sidebar text-white p-5 rounded-lg shadow-sm border-b-4 border-sidebar-active">
-            <h2 className="text-base font-bold flex items-center gap-2"><ShieldCheck className="text-sidebar-active w-5 h-5" /> Audit Defense Procurement Record</h2>
+          <div className="bg-sidebar text-white p-5 rounded-lg shadow-sm border-b-4 border-sidebar-accent">
+            <h2 className="text-base font-bold flex items-center gap-2"><ShieldCheck className="text-sidebar-accent w-5 h-5" /> Audit Defense Procurement Record</h2>
             <p className="text-xs text-slate-300 mt-1">Official ledger of sponsored pilots and fast-track adoptions with GFR 2017 exemption references.</p>
           </div>
 
@@ -2396,7 +2765,7 @@ function OfficialDashboard({
             </div>
             <form onSubmit={handleConfirmAdoption} className="space-y-3">
               <div className="bg-emerald-50 border border-emerald-200 p-3 rounded text-[11px] space-y-1">
-                <span className="font-bold text-emerald-800 uppercase tracking-wide block text-[10px]">&check; Certified Precedent</span>
+                <span className="font-bold text-emerald-800 uppercase tracking-wide block text-[10px]">✓ Certified Precedent</span>
                 <p><strong>Pilot:</strong> {pilots.find(p => p.id === adoptionModalOpen)?.title}</p>
                 <p><strong>Startup:</strong> {pilots.find(p => p.id === adoptionModalOpen)?.application?.startupName}</p>
                 <p><strong>Verified Metrics:</strong> {pilots.find(p => p.id === adoptionModalOpen)?.evidence?.waterLossReduction}</p>
@@ -2509,6 +2878,18 @@ function VerifierDashboard({
       {/* PENDING QUEUE */}
       {currentTab === "pending" && (
         <div className="space-y-4 animate-fade-in">
+          <DeskHeader
+            eyebrow="Examination Bench"
+            title={currentUser.organization}
+            blurb="Score submitted evidence against the criteria the sponsoring department published before applications opened. Neither the startup nor the buyer grades this — that independence is what makes the record citable."
+            standing={{ label: "Empanelled sector", value: currentUser.sector }}
+          />
+
+          <LedgerStrip items={[
+            { label: "Awaiting audit", value: pendingList.length, note: "Pilots with evidence submitted" },
+            { label: "Certified by you", value: pilots.filter(p => p.verification?.verifierId === currentUser.id).length, note: "Outcomes you have signed off" },
+          ]} />
+
           {pendingList.length === 0 ? (
             <div className="bg-white rounded-lg p-6 border border-slate-200 text-center text-slate-400 shadow-sm">
               <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
@@ -2704,14 +3085,27 @@ function AdminDashboard({
       {/* 1. SYSTEM ANALYTICS */}
       {currentTab === "analytics" && (
         <div className="space-y-5 animate-fade-in">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard icon={<Building className="text-slate-500 w-5 h-5" />} label="Total Pilots" value={totalPilotsCount} />
-            <StatCard icon={<Award className="text-emerald-600 w-5 h-5" />} label="Certified Precedents" value={certifiedCount} />
-            <StatCard icon={<CheckCircle className="text-blue-600 w-5 h-5" />} label="Adoptions" value={scaleAdoptionsCount} />
-            <div className="bg-gradient-to-br from-sidebar to-sidebar-darker text-white rounded-lg p-4 shadow-sm flex flex-col justify-between">
-              <span className="text-[10px] uppercase font-bold text-slate-300 tracking-wider">Value Unlocked</span>
-              <span className="text-xl font-bold mt-1">₹{totalValueUnlocked.toLocaleString('en-IN')}</span>
-              <span className="text-[9px] text-sidebar-active font-bold mt-1">&check; Economy Scaling</span>
+          <DeskHeader
+            eyebrow="Registry Oversight"
+            title="Maharashtra State Innovation Society"
+            blurb="Empanel the technical auditors, publish the success criteria each sector is judged against, and hold the state-wide register of certified precedents."
+            standing={{ label: "Office", value: currentUser.designation }}
+          />
+
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4 items-stretch">
+            <LedgerStrip items={[
+              { label: "Pilots on register", value: totalPilotsCount, note: "Across all participating bodies" },
+              { label: "Certified", value: certifiedCount, note: "Passed independent verification" },
+              { label: "Adoptions", value: scaleAdoptionsCount, note: "Procured without a fresh tender" },
+            ]} />
+            <div className="bg-sidebar text-white rounded-md px-6 py-5 flex flex-col justify-center border-l-[3px] border-sidebar-accent min-w-[210px]">
+              <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-blue-100/75">Value unlocked</span>
+              <span className="font-display text-[1.75rem] font-extrabold mt-1.5 leading-none tabular-nums">
+                ₹{totalValueUnlocked.toLocaleString('en-IN')}
+              </span>
+              <span className="text-[10.5px] text-sidebar-accent font-semibold mt-2">
+                ✓ Pilot spend + adoption contracts
+              </span>
             </div>
           </div>
 
@@ -2795,9 +3189,7 @@ function AdminDashboard({
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Sector</label>
                 <select value={vSector} onChange={(e) => setVSector(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-1.5 text-sm">
-                  <option value="Water & Sanitation">Water &amp; Sanitation</option>
-                  <option value="Energy & Cleantech">Energy &amp; Cleantech</option>
-                  <option value="Healthcare & Medtech">Healthcare &amp; Medtech</option>
+                  {Object.keys(sectorRules).map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
               <div>
@@ -2862,9 +3254,7 @@ function AdminDashboard({
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Sector</label>
                 <select value={activeRuleSector} onChange={(e) => setActiveRuleSector(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-1.5 text-sm">
-                  <option value="Water & Sanitation">Water &amp; Sanitation</option>
-                  <option value="Energy & Cleantech">Energy &amp; Cleantech</option>
-                  <option value="Healthcare & Medtech">Healthcare &amp; Medtech</option>
+                  {Object.keys(sectorRules).map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
               <div>
@@ -2957,14 +3347,14 @@ function AdoptionsLineChart({ procurements }) {
       <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">Cumulative Adoptions</p>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-32" role="img">
         {[0, 0.5, 1].map((f) => <line key={f} x1={PAD} x2={W - PAD} y1={y(maxY * f)} y2={y(maxY * f)} stroke="#e2e8f0" strokeWidth="1" />)}
-        <text x={4} y={y(maxY) + 4} fontSize="8" fill="#94a3b8">{maxY}</text>
-        <text x={4} y={y(0) + 4} fontSize="8" fill="#94a3b8">0</text>
+        <text x={4} y={y(maxY) + 4} fontSize="11" fill="#64748b">{maxY}</text>
+        <text x={4} y={y(0) + 4} fontSize="11" fill="#64748b">0</text>
         <path d={area} fill="#1ABB9C" opacity="0.12" />
         <path d={path} fill="none" stroke="#1ABB9C" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
         {points.map((pt, i) => (
           <g key={pt.date + i}>
             <circle cx={x(i)} cy={y(pt.cumulative)} r="3.5" fill="#1ABB9C" />
-            <text x={x(i)} y={H - PAD + 12} fontSize="7" fill="#64748b" textAnchor="middle">{pt.date}</text>
+            <text x={x(i)} y={H - PAD + 14} fontSize="10" fill="#475569" textAnchor="middle">{pt.date}</text>
           </g>
         ))}
       </svg>
@@ -3023,6 +3413,68 @@ function BarItem({ label, value, max, color }) {
       </div>
       <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
         <div className={`${color} h-2 rounded-full transition-all duration-500`} style={{ width: `${Math.max(percent, 2)}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/* A government statistics return rather than a row of floating cards: one ruled
+   block, hairline divisions, tabular figures. Replaces the 4-up StatCard grid. */
+function LedgerStrip({ items }) {
+  // Static strings so Tailwind's scanner keeps these classes.
+  const cols = { 2: "lg:grid-cols-2", 3: "lg:grid-cols-3", 4: "lg:grid-cols-4" }[items.length] || "lg:grid-cols-4";
+  return (
+    <div className="border border-slate-200 rounded-md overflow-hidden bg-white h-full">
+      <div className="h-[3px] bg-sidebar-active" />
+      <div className={`grid grid-cols-2 ${cols} gap-px bg-slate-200 h-full`}>
+        {items.map((it, i) => (
+          <div
+            key={it.label}
+            /* an odd count leaves a hole in the 2-up phone grid — let the last one span it */
+            className={`bg-white px-5 py-4 ${
+              items.length % 2 === 1 && i === items.length - 1 ? "col-span-2 lg:col-span-1" : ""
+            }`}
+          >
+            <span className="block font-mono text-[9.5px] uppercase tracking-[0.14em] text-slate-500">
+              {it.label}
+            </span>
+            <span className="block font-display text-[1.85rem] font-extrabold text-sidebar leading-none mt-1.5 tabular-nums">
+              {it.value}
+            </span>
+            {it.note && (
+              <span className="block text-[11px] text-slate-500 mt-1.5 leading-snug">{it.note}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* Each role opens on its own desk: who you are here, what this desk is for, and
+   the credential you act under. Keeps the four personas from reading alike. */
+function DeskHeader({ eyebrow, title, blurb, standing, action }) {
+  return (
+    <div className="bg-white border border-slate-200 border-l-[3px] border-l-sidebar-active rounded-r-md px-5 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="min-w-0">
+        <span className="font-mono text-[9.5px] uppercase tracking-[0.16em] text-sidebar-active">
+          {eyebrow}
+        </span>
+        <h2 className="font-display font-bold text-[1.05rem] text-slate-800 mt-1.5 leading-tight">{title}</h2>
+        <p className="text-[12.5px] text-slate-500 mt-1 max-w-[64ch] leading-relaxed">{blurb}</p>
+      </div>
+      <div className="flex items-center gap-4 flex-shrink-0">
+        {standing && (
+          <div className="md:text-right border-t md:border-t-0 md:border-l border-slate-200 pt-3 md:pt-0 md:pl-4">
+            <span className="block font-mono text-[9px] uppercase tracking-[0.13em] text-slate-500">
+              {standing.label}
+            </span>
+            <span className="block font-mono text-[12.5px] font-semibold text-slate-800 mt-0.5">
+              {standing.value}
+            </span>
+          </div>
+        )}
+        {action}
       </div>
     </div>
   );
@@ -3198,15 +3650,15 @@ function AuditDocketModal({ data, pilots, procurements, onClose, showToast }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex justify-center items-center p-3 sm:p-5 print:p-0 print:bg-white">
-      <div className="bg-white rounded-lg max-w-3xl w-full shadow-2xl border border-slate-300 overflow-hidden flex flex-col max-h-[92vh] print:max-h-none print:border-none print:shadow-none animate-slide-up">
+    <div className="print-overlay fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex justify-center items-center p-3 sm:p-5 print:p-0 print:bg-white">
+      <div className="print-document bg-white rounded-lg max-w-3xl w-full shadow-2xl border border-slate-300 overflow-hidden flex flex-col max-h-[92vh] print:max-h-none print:border-none print:shadow-none animate-slide-up">
         {/* Top Control Bar (Hidden on print) */}
-        <div className="bg-slate-900 text-white px-5 py-3 flex items-center justify-between print:hidden flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-sidebar-active" />
-            <div>
-              <h3 className="text-sm font-bold">CVC / CAG Vigilance Audit Defense Docket</h3>
-              <p className="text-[10px] text-slate-400 font-mono">Statutory Exemption Certificate under GFR 2017 Rules 166, 170 &amp; 173</p>
+        <div className="bg-sidebar text-white px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 print:hidden flex-shrink-0 border-b-2 border-sidebar-accent">
+          <div className="flex items-start sm:items-center gap-2 min-w-0">
+            <ShieldCheck className="w-5 h-5 flex-shrink-0 mt-0.5 sm:mt-0 text-sidebar-accent" />
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-white">CVC / CAG Vigilance Audit Defense Docket</h3>
+              <p className="text-[10px] text-blue-100/70 font-mono line-clamp-2 sm:line-clamp-none">Statutory Exemption Certificate under GFR 2017 Rules 166, 170 &amp; 173</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -3235,22 +3687,22 @@ function AuditDocketModal({ data, pilots, procurements, onClose, showToast }) {
         </div>
 
         {/* Scrollable Printable Memo Content */}
-        <div className="p-6 sm:p-8 overflow-y-auto print:overflow-visible space-y-6 text-slate-800 font-serif leading-relaxed text-xs">
+        <div className="p-4 sm:p-8 overflow-y-auto print:overflow-visible space-y-6 text-slate-800 font-serif leading-relaxed text-xs">
           {/* Government Formal Letterhead */}
           <div className="border-b-2 border-slate-900 pb-4 text-center space-y-1">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full border border-amber-500 bg-amber-50 text-amber-900 font-bold text-lg mb-1 shadow-xs">
               🏛️
             </div>
-            <h2 className="text-base sm:text-lg font-bold uppercase tracking-wider text-slate-900">
+            <h2 className="doc-serif text-base sm:text-lg font-bold uppercase tracking-wider text-slate-900">
               Government of Maharashtra
             </h2>
-            <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wide text-slate-700">
+            <h3 className="doc-serif text-xs sm:text-sm font-bold uppercase tracking-wide text-slate-700">
               Urban Development Department &amp; Maharashtra State Innovation Society (MSInS)
             </h3>
             <p className="text-[10px] text-slate-500 font-sans tracking-wide">
               Civil Secretariat, Mantralaya, Mumbai – 400032 | State Innovation Procurement Sandbox Framework
             </p>
-            <div className="flex justify-between items-center text-[10px] font-sans pt-2 border-t border-slate-200 text-slate-600">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1.5 sm:gap-2 text-[10px] font-sans pt-2 border-t border-slate-200 text-slate-600">
               <span><strong>Docket Ref:</strong> {docketRef}</span>
               <span><strong>Issued Date:</strong> {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
               <span><strong>Vigilance Code:</strong> GFR-2017-R170/173/166</span>
@@ -3262,7 +3714,7 @@ function AuditDocketModal({ data, pilots, procurements, onClose, showToast }) {
             <span className="bg-emerald-100 text-emerald-900 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full">
               Official Memorandum &bull; Statutory Audit Defense
             </span>
-            <h4 className="font-bold text-sm text-slate-900 uppercase">
+            <h4 className="doc-serif font-bold text-sm text-slate-900 uppercase">
               Compliance Certificate for Precedent-Based Public Procurement
             </h4>
             <p className="text-[11px] text-slate-600 italic">
@@ -3306,7 +3758,7 @@ function AuditDocketModal({ data, pilots, procurements, onClose, showToast }) {
               <span className="w-1.5 h-3.5 bg-sidebar-active inline-block rounded-xs"></span>
               2. Statutory Exemption Matrix (General Financial Rules 2017)
             </h4>
-            <div className="border border-slate-200 rounded overflow-hidden">
+            <div className="border border-slate-200 rounded overflow-x-auto">
               <table className="min-w-full text-[11px]">
                 <thead className="bg-slate-100 text-slate-700 text-[10px] uppercase font-bold">
                   <tr>
@@ -3319,22 +3771,22 @@ function AuditDocketModal({ data, pilots, procurements, onClose, showToast }) {
                   <tr>
                     <td className="py-2 px-3 font-bold text-slate-900 font-mono">GFR Rule 170</td>
                     <td className="py-2 px-3">Exemption from Earnest Money Deposit (Bid Security)</td>
-                    <td className="py-2 px-3 text-emerald-700 font-semibold">&check; Verified DPIIT Certificate {startup.dpiitNo}. EMD requirement legally waived.</td>
+                    <td className="py-2 px-3 text-emerald-700 font-semibold">✓ Verified DPIIT Certificate {startup.dpiitNo}. EMD requirement legally waived.</td>
                   </tr>
                   <tr className="bg-slate-50/50">
                     <td className="py-2 px-3 font-bold text-slate-900 font-mono">GFR Rule 173(i)</td>
                     <td className="py-2 px-3">Relaxation of Prior Turnover and Prior Experience conditions</td>
-                    <td className="py-2 px-3 text-emerald-700 font-semibold">&check; Precedent Pilot verified with &ge;15% outcome benchmark, waiving ₹10 Cr turnover condition.</td>
+                    <td className="py-2 px-3 text-emerald-700 font-semibold">✓ Precedent Pilot verified with &ge;15% outcome benchmark, waiving ₹10 Cr turnover condition.</td>
                   </tr>
                   <tr>
                     <td className="py-2 px-3 font-bold text-slate-900 font-mono">GFR Rule 166</td>
                     <td className="py-2 px-3">Single Source Procurement for Proprietary Civic Innovation</td>
-                    <td className="py-2 px-3 text-emerald-700 font-semibold">&check; Proprietary acoustic IoT telemetry tested and certified. No comparable domestic alternative available.</td>
+                    <td className="py-2 px-3 text-emerald-700 font-semibold">✓ Proprietary acoustic IoT telemetry tested and certified. No comparable domestic alternative available.</td>
                   </tr>
                   <tr className="bg-slate-50/50">
                     <td className="py-2 px-3 font-bold text-slate-900 font-mono">MSInS Sandbox GR</td>
                     <td className="py-2 px-3">State Government Resolution on Inter-Agency Scaling</td>
-                    <td className="py-2 px-3 text-emerald-700 font-semibold">&check; Municipal Commissioner authorized to adopt certified sandbox precedent without separate RFP.</td>
+                    <td className="py-2 px-3 text-emerald-700 font-semibold">✓ Municipal Commissioner authorized to adopt certified sandbox precedent without separate RFP.</td>
                   </tr>
                 </tbody>
               </table>
@@ -3370,7 +3822,7 @@ function AuditDocketModal({ data, pilots, procurements, onClose, showToast }) {
               <span className="w-1.5 h-3.5 bg-sidebar-active inline-block rounded-xs"></span>
               4. Price Reasonableness &amp; Public Value Benchmark
             </h4>
-            <div className="grid grid-cols-3 gap-3 text-center">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
               <div className="bg-slate-50 p-2.5 rounded border border-slate-200">
                 <span className="text-[9px] font-bold uppercase text-slate-400 block">Scaled Contract Value</span>
                 <span className="text-sm font-bold text-slate-900">₹{scaledAmount.toLocaleString('en-IN')}</span>
@@ -3393,21 +3845,21 @@ function AuditDocketModal({ data, pilots, procurements, onClose, showToast }) {
           <div className="pt-4 border-t-2 border-slate-300 font-sans grid grid-cols-3 gap-4 text-center">
             <div className="border border-slate-200 p-3 rounded bg-slate-50/50">
               <div className="h-10 flex items-center justify-center font-mono font-bold text-[10px] text-emerald-700 border-b border-dashed pb-1">
-                &check; DIGITALLY SIGNED
+                ✓ DIGITALLY SIGNED
               </div>
               <p className="font-bold text-[10px] text-slate-800 mt-1">{pilot?.sponsoringOfficialName || "Arjun"}</p>
               <p className="text-[9px] text-slate-500">Superintending Engineer<br/>Pune Municipal Corporation</p>
             </div>
             <div className="border border-slate-200 p-3 rounded bg-slate-50/50">
               <div className="h-10 flex items-center justify-center font-mono font-bold text-[10px] text-emerald-700 border-b border-dashed pb-1">
-                &check; INDEPENDENT AUDIT CLEARANCE
+                ✓ INDEPENDENT AUDIT CLEARANCE
               </div>
               <p className="font-bold text-[10px] text-slate-800 mt-1">{pilot?.verification?.verifierName || "Dr. Kavita Rao"}</p>
               <p className="text-[9px] text-slate-500">Accredited Technical Verifier<br/>Water Infrastructure Audit Board</p>
             </div>
             <div className="border border-slate-200 p-3 rounded bg-slate-50/50">
               <div className="h-10 flex items-center justify-center font-mono font-bold text-[10px] text-emerald-700 border-b border-dashed pb-1">
-                &check; STATUTORY APPROVAL SEAL
+                ✓ STATUTORY APPROVAL SEAL
               </div>
               <p className="font-bold text-[10px] text-slate-800 mt-1">{procurement?.adoptingOfficialName || "Meera"}</p>
               <p className="text-[9px] text-slate-500">Additional Commissioner<br/>Nagpur Municipal Corporation</p>
@@ -3467,15 +3919,15 @@ function ContractDetailsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex justify-center items-center p-3 sm:p-5 print:p-0 print:bg-white">
-      <div className="bg-white rounded-lg max-w-3xl w-full shadow-2xl border border-slate-300 overflow-hidden flex flex-col max-h-[92vh] print:max-h-none print:border-none print:shadow-none animate-slide-up">
+    <div className="print-overlay fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex justify-center items-center p-3 sm:p-5 print:p-0 print:bg-white">
+      <div className="print-document bg-white rounded-lg max-w-3xl w-full shadow-2xl border border-slate-300 overflow-hidden flex flex-col max-h-[92vh] print:max-h-none print:border-none print:shadow-none animate-slide-up">
         {/* Top Control Bar (Hidden on print) */}
-        <div className="bg-slate-900 text-white px-5 py-3 flex items-center justify-between print:hidden flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <ScrollText className="w-5 h-5 text-emerald-400" />
-            <div>
-              <h3 className="text-sm font-bold">Public Procurement Contract &amp; Service Agreement</h3>
-              <p className="text-[10px] text-slate-400 font-mono">Bilateral Municipal Agreement &bull; Ref: {contractId}</p>
+        <div className="bg-sidebar text-white px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 print:hidden flex-shrink-0 border-b-2 border-sidebar-accent">
+          <div className="flex items-start sm:items-center gap-2 min-w-0">
+            <ScrollText className="w-5 h-5 flex-shrink-0 mt-0.5 sm:mt-0 text-emerald-400" />
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-white">Public Procurement Contract &amp; Service Agreement</h3>
+              <p className="text-[10px] text-blue-100/70 font-mono truncate">Bilateral Municipal Agreement &bull; Ref: {contractId}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -3504,7 +3956,7 @@ function ContractDetailsModal({
         </div>
 
         {/* Scrollable Printable Contract Body */}
-        <div className="p-6 sm:p-8 overflow-y-auto print:overflow-visible space-y-6 text-slate-800 font-serif leading-relaxed text-xs">
+        <div className="p-4 sm:p-8 overflow-y-auto print:overflow-visible space-y-6 text-slate-800 font-serif leading-relaxed text-xs">
           {/* Header Seal */}
           <div className="border-b-2 border-slate-900 pb-4 text-center space-y-1">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full border border-emerald-600 bg-emerald-50 text-emerald-900 font-bold text-lg mb-1 shadow-xs">
@@ -3519,7 +3971,7 @@ function ContractDetailsModal({
             <p className="text-[10px] text-slate-500 font-sans tracking-wide">
               Registered in State Precedent Procurement Ledger &bull; Form 83-A Bilateral Agreement
             </p>
-            <div className="flex justify-between items-center text-[10px] font-sans pt-2 border-t border-slate-200 text-slate-600">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1.5 sm:gap-2 text-[10px] font-sans pt-2 border-t border-slate-200 text-slate-600">
               <span><strong>Contract ID:</strong> {contractId}</span>
               <span><strong>Execution Date:</strong> {executionDate}</span>
               <span>
@@ -3608,7 +4060,7 @@ function ContractDetailsModal({
               <span className="w-1.5 h-3.5 bg-emerald-600 inline-block rounded-xs"></span>
               Article 2: Commercial Value &amp; Phased Escrow Schedule (PFMS)
             </h4>
-            <div className="border border-slate-200 rounded overflow-hidden">
+            <div className="border border-slate-200 rounded overflow-x-auto">
               <table className="min-w-full text-[11px]">
                 <thead className="bg-slate-100 text-slate-700 text-[10px] uppercase font-bold">
                   <tr>
@@ -3675,7 +4127,7 @@ function ContractDetailsModal({
           <div className="pt-4 border-t-2 border-slate-300 font-sans grid grid-cols-2 gap-6 text-center">
             <div className="border border-slate-200 p-3 rounded bg-slate-50/50">
               <div className="h-10 flex items-center justify-center font-mono font-bold text-[10px] text-emerald-700 border-b border-dashed pb-1">
-                &check; COUNTERSIGNED BY FIRST PARTY
+                ✓ COUNTERSIGNED BY FIRST PARTY
               </div>
               <p className="font-bold text-[10px] text-slate-800 mt-1">{buyerOfficer}</p>
               <p className="text-[9px] text-slate-500">{buyerEntity}</p>
@@ -3697,7 +4149,7 @@ function ContractDetailsModal({
           {isPendingMyAcceptance && (
             <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-4 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-3 font-sans shadow-md animate-slide-up">
               <div>
-                <h4 className="font-bold text-sm">Review Complete. Ready to execute contract?</h4>
+                <h4 className="font-bold text-sm text-white">Review Complete. Ready to execute contract?</h4>
                 <p className="text-[11px] text-emerald-100">By clicking accept, this bilateral agreement becomes legally binding under GFR 170 &amp; 173.</p>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
@@ -3706,7 +4158,7 @@ function ContractDetailsModal({
                   onClick={() => onAcceptOffer(procurement.id)}
                   className="bg-white hover:bg-emerald-50 text-emerald-900 font-bold text-xs py-2 px-4 rounded shadow transition cursor-pointer"
                 >
-                  &check; Accept &amp; Sign Now
+                  ✓ Accept &amp; Sign Now
                 </button>
                 <button
                   type="button"

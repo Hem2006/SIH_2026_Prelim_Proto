@@ -3,6 +3,28 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
 
+/* ---------------------------------------------------------------------------
+   Pinch-zoom lock for iOS Safari.
+
+   iOS has ignored `user-scalable=no` in the viewport meta since iOS 10, so the
+   meta tag alone only locks Android. Safari still fires the non-standard
+   `gesture*` events for pinch, and cancelling those does stop the zoom.
+
+   Only the `gesture*` events are hooked. Two other guards were tried and
+   removed because each broke real taps:
+     - preventDefault() on `touchend` cancels the click that follows it, so any
+       tap landing soon after another (e.g. straight after a scroll) was eaten.
+     - a non-passive `touchmove` listener on document makes the browser block on
+       JS for every touch move, which stalled input dispatch entirely.
+   Double-tap-to-zoom is handled by `touch-action: manipulation` in index.css,
+   which costs nothing and does not interfere with tapping.
+--------------------------------------------------------------------------- */
+if (typeof window !== 'undefined') {
+  for (const evt of ['gesturestart', 'gesturechange', 'gestureend']) {
+    document.addEventListener(evt, (e) => e.preventDefault(), { passive: false });
+  }
+}
+
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
