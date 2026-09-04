@@ -68,12 +68,20 @@ import {
    tab shows up in a verifier's queue in another, without a refresh. The
    `storage` event only ever fires in *other* tabs than the one that wrote
    the value, so this can't loop back on itself. */
-const SANDBOX_STORAGE_KEY = "aarambh_sandbox_state_v1";
+const SANDBOX_STORAGE_KEY = "aarambh_sandbox_state_v3";
 
+const SEED_PILOT_IDS = ["p1", "p2", "p3", "p4"];
 const loadStoredSandboxState = () => {
   try {
     const raw = window.localStorage.getItem(SANDBOX_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const storedIds = (parsed.pilots || []).map(p => p.id);
+    if (!SEED_PILOT_IDS.every(id => storedIds.includes(id))) {
+      window.localStorage.removeItem(SANDBOX_STORAGE_KEY);
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -219,6 +227,7 @@ export default function App() {
     if (activeRole === "Verifier") return [
       { label: "Pending Verifications", short: "Pending", tab: "pending", icon: <Clock className="w-4 h-4" /> },
       { label: "Verification History", short: "History", tab: "history", icon: <CheckCircle className="w-4 h-4" /> },
+      { label: "All Passports", short: "Passports", tab: "all-passports", icon: <Award className="w-4 h-4" /> },
     ];
     if (activeRole === "Admin") return [
       { label: "System Analytics", short: "Stats", tab: "analytics", icon: <BarChart3 className="w-4 h-4" /> },
@@ -1251,11 +1260,19 @@ function RegistrationView({
    official's applicant review, so both render identically. Handles a
    startup with no certified pilots yet gracefully — most applicants will
    be first-timers, and that isn't a reason to hide the passport. */
-function PilotPassportPanel({ startupName, dpiitNo, sector, startupId, pilots, setDocketModalData }) {
+function PilotPassportPanel({ startupName, dpiitNo, sector, startupId, pilots, setDocketModalData, onClose }) {
   const certifiedPilots = pilots.filter(p => p.status === "Certified" && p.application?.startupId === startupId);
   return (
     <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
       <div className="bg-sidebar text-white px-6 py-8 text-center relative border-b-4 border-sidebar-accent">
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="absolute top-3 left-3 text-white/60 hover:text-white font-bold text-xs flex items-center gap-1 bg-white/10 hover:bg-white/20 px-2 py-1 rounded transition"
+          >
+            ← Back
+          </button>
+        )}
         <div className={`absolute top-3 right-3 text-white font-bold text-[9px] uppercase tracking-wider py-0.5 px-2 rounded shadow ${certifiedPilots.length > 0 ? "bg-emerald-500" : "bg-slate-500"}`}>
           {certifiedPilots.length > 0 ? "✓ Active Passport" : "No Certifications Yet"}
         </div>
@@ -2107,6 +2124,7 @@ function OfficialDashboard({
   const handleDisburseMilestone = (pilotId, milestoneId) => {
     let disbursedAmount = 0;
     let startupName = "Startup";
+    let autoCompleted = false;
     setPilots(prev => prev.map(p => {
       if (p.id === pilotId && p.escrow) {
         startupName = p.application?.startupName || "Startup";
@@ -2127,18 +2145,38 @@ function OfficialDashboard({
           return m;
         });
         const totalDisbursed = updatedMilestones.filter(m => m.status === "Disbursed").reduce((sum, m) => sum + m.amount, 0);
+        const preCertMilestones = updatedMilestones.filter(m => m.id !== "m3");
+        const allPreCertDisbursed = preCertMilestones.every(m => m.status === "Disbursed");
+        if (allPreCertDisbursed && p.status === "Running") {
+          autoCompleted = true;
+          const autoEvidence = p.evidence || {
+            waterLossReduction: `Milestone deliverables verified by ${p.department}`,
+            duration: `${p.durationDays} days`,
+            sensorsDeployed: "Per milestone scope",
+            summary: preCertMilestones.map(m => m.deliverable).join(". ") + ".",
+            docs: "Milestone_Verification_Records.pdf",
+            submittedAt: new Date().toISOString().split("T")[0],
+            sponsorFeedback: null
+          };
+          return {
+            ...p,
+            status: "Completed",
+            evidence: autoEvidence,
+            escrow: { ...p.escrow, disbursedAmount: totalDisbursed, milestones: updatedMilestones }
+          };
+        }
         return {
           ...p,
-          escrow: {
-            ...p.escrow,
-            disbursedAmount: totalDisbursed,
-            milestones: updatedMilestones
-          }
+          escrow: { ...p.escrow, disbursedAmount: totalDisbursed, milestones: updatedMilestones }
         };
       }
       return p;
     }));
-    showToast(`PFMS Disbursement of ₹${disbursedAmount.toLocaleString('en-IN')} approved for ${startupName}!`, "success");
+    if (autoCompleted) {
+      showToast(`₹${disbursedAmount.toLocaleString('en-IN')} disbursed. All operational milestones complete — pilot sent to independent verification queue.`, "success");
+    } else {
+      showToast(`PFMS Disbursement of ₹${disbursedAmount.toLocaleString('en-IN')} approved for ${startupName}!`, "success");
+    }
   };
 
   const handleRejectStartup = (pilotId, startupId) => {
@@ -2863,22 +2901,19 @@ function OfficialDashboard({
 
       {/* APPLICANT PASSPORT MODAL */}
       {viewPassportApp && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 backdrop-blur-sm flex justify-center items-start sm:items-center p-4">
-          <div className="max-w-2xl w-full my-6 relative animate-slide-up">
-            <button
-              onClick={() => setViewPassportApp(null)}
-              className="absolute -top-3 -right-3 z-10 bg-white text-slate-500 hover:text-slate-800 rounded-full w-8 h-8 flex items-center justify-center shadow-md border border-slate-200 text-lg font-bold"
-            >
-              &times;
-            </button>
-            <PilotPassportPanel
-              startupName={viewPassportApp.startupName}
-              dpiitNo={viewPassportApp.dpiitNo}
-              sector={viewPassportApp.sector}
-              startupId={viewPassportApp.startupId}
-              pilots={pilots}
-              setDocketModalData={setDocketModalData}
-            />
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 backdrop-blur-sm">
+          <div className="flex justify-center items-start min-h-full py-8 px-4">
+            <div className="max-w-2xl w-full animate-slide-up">
+              <PilotPassportPanel
+                startupName={viewPassportApp.startupName}
+                dpiitNo={viewPassportApp.dpiitNo}
+                sector={viewPassportApp.sector}
+                startupId={viewPassportApp.startupId}
+                pilots={pilots}
+                setDocketModalData={setDocketModalData}
+                onClose={() => setViewPassportApp(null)}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -3022,33 +3057,45 @@ function VerifierDashboard({
   currentTab, setCurrentTab, currentUser, pilots, setPilots, showToast, selectedPilot, setSelectedPilot, sectorRules
 }) {
   const [activePilotId, setActivePilotId] = useState(null);
-  const [score, setScore] = useState(90);
-  const [notes, setNotes] = useState("");
-  // Keyed by criterion index rather than fixed c1/c2/c3 — the checklist is
-  // read live from the sector's published success criteria (Admin > Success
-  // Criteria), which vary in count per sector and can change over time.
+  // Section A — eligibility gate checkboxes (keyed by criterion index)
   const [criteriaChecks, setCriteriaChecks] = useState({});
+  // Section B — weighted sub-scores
+  const [scoreOutcome, setScoreOutcome] = useState(32);     // max 40
+  const [scoreReplicability, setScoreReplicability] = useState(16); // max 20
+  const [scoreCompliance, setScoreCompliance] = useState(12);  // max 15
+  const SCORE_MAX = 75; // sum of all sub-score maxima
+  const compositeScore = Math.round(((scoreOutcome + scoreReplicability + scoreCompliance) / SCORE_MAX) * 100);
+  const isCertifiable = compositeScore >= 65;
+  // Section C — qualitative assessment
+  const [auditorRecommendation, setAuditorRecommendation] = useState("");
+  const [riskCaveats, setRiskCaveats] = useState("");
+  const [notes, setNotes] = useState("");
+  // Section C — verification method
   const [verificationMethod, setVerificationMethod] = useState("");
-  const [evidenceReviewed, setEvidenceReviewed] = useState(false);
-  const [noConflict, setNoConflict] = useState(false);
+  // Section D — auditor declaration
+  const [auditorDeclaration, setAuditorDeclaration] = useState(false);
 
   const pendingList = pilots.filter(p => p.status === "Completed");
   const verifiedHistory = pilots.filter(p => p.status === "Certified" || p.status === "Rejected");
 
   const resetAuditForm = () => {
     setActivePilotId(null);
-    setNotes("");
-    setScore(90);
     setCriteriaChecks({});
+    setScoreOutcome(32);
+    setScoreReplicability(16);
+    setScoreCompliance(12);
+    setAuditorRecommendation("");
+    setRiskCaveats("");
+    setNotes("");
     setVerificationMethod("");
-    setEvidenceReviewed(false);
-    setNoConflict(false);
+    setAuditorDeclaration(false);
   };
 
   const handleVerifyAction = (statusOption) => {
-    if (!notes.trim()) { showToast("Please provide evaluator notes before deciding", "error"); return; }
+    if (!notes.trim()) { showToast("Please provide detailed auditor notes before deciding", "error"); return; }
     if (!verificationMethod) { showToast("Please select how this evidence was independently verified", "error"); return; }
-    if (!evidenceReviewed || !noConflict) { showToast("Please confirm both compliance declarations before deciding", "error"); return; }
+    if (!auditorDeclaration) { showToast("Please confirm the auditor declaration before deciding", "error"); return; }
+    if (!auditorRecommendation) { showToast("Please select an auditor recommendation", "error"); return; }
     const updated = pilots.map(p => {
       if (p.id === activePilotId) {
         let updatedEscrow = p.escrow;
@@ -3065,25 +3112,25 @@ function VerifierDashboard({
             return m;
           });
           const totalDisbursed = updatedMilestones.filter(m => m.status === "Disbursed").reduce((sum, m) => sum + m.amount, 0);
-          updatedEscrow = {
-            ...p.escrow,
-            disbursedAmount: totalDisbursed,
-            milestones: updatedMilestones
-          };
+          updatedEscrow = { ...p.escrow, disbursedAmount: totalDisbursed, milestones: updatedMilestones };
         }
         const publishedCriteria = sectorRules[p.sector] || [];
         return {
           ...p,
           status: statusOption,
           verification: {
-            verifierId: currentUser.id, verifierName: currentUser.name, score: parseInt(score),
+            verifierId: currentUser.id,
+            verifierName: currentUser.name,
+            score: compositeScore,
+            subScores: { outcome: scoreOutcome, replicability: scoreReplicability, compliance: scoreCompliance },
             scorecard: publishedCriteria.length > 0
               ? publishedCriteria.map((criterion, idx) => ({ criterion, passed: criteriaChecks[idx] !== false }))
               : [{ criterion: "No success criteria were on file for this sector at audit time", passed: true }],
             verificationMethod,
-            evidenceReviewed,
-            noConflictOfInterest: noConflict,
-            notes, certifiedAt: new Date().toISOString().split("T")[0]
+            auditorRecommendation,
+            riskCaveats,
+            notes,
+            certifiedAt: new Date().toISOString().split("T")[0]
           },
           escrow: updatedEscrow
         };
@@ -3184,102 +3231,213 @@ function VerifierDashboard({
                     Evaluate &amp; Complete Audit
                   </button>
                 ) : (
-                  <div className="bg-slate-50 p-4 rounded-lg border-2 border-sidebar space-y-4 animate-slide-up">
-                    <div className="border-b pb-1.5">
-                      <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wider">Independent Technical Audit Form</h4>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Every field below is retained on the certified record and reproduced in the CVC/CAG audit docket.</p>
+                  <div className="bg-slate-50 rounded-lg border-2 border-sidebar overflow-hidden animate-slide-up">
+                    {/* Scorecard Header */}
+                    <div className="bg-sidebar px-5 py-3 flex justify-between items-center">
+                      <div>
+                        <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Technical Evaluator Scorecard</p>
+                        <p className="text-[11px] text-white/80 mt-0.5">GFR 2017 — Startup Procurement Audit Framework</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-display font-extrabold text-3xl text-white tabular-nums">{compositeScore}</span>
+                        <span className="text-white/60 text-sm">/100</span>
+                        <p className="text-[9px] text-white/50 uppercase tracking-wider mt-0.5">Composite Score</p>
+                      </div>
                     </div>
 
-                    {/* 1. Published sector criteria — read live, not hardcoded, so it always
-                        reflects whatever Admin currently publishes for this pilot's sector. */}
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-bold uppercase text-slate-500">
-                        1. Published Success Criteria — {p.sector}
-                      </label>
-                      {(sectorRules[p.sector] || []).length === 0 ? (
-                        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2.5 py-2">
-                          No success criteria are on file for "{p.sector}" yet. Admin should publish them under Success Criteria — score the submission on its narrative merits below in the meantime.
-                        </p>
-                      ) : (
-                        <div className="space-y-1.5 bg-white p-2.5 rounded border border-slate-200">
-                          {(sectorRules[p.sector] || []).map((criterion, idx) => (
-                            <label key={idx} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={criteriaChecks[idx] !== false}
-                                onChange={(e) => setCriteriaChecks(prev => ({ ...prev, [idx]: e.target.checked }))}
-                                className="rounded border-slate-300 text-sidebar-active"
-                              />
-                              <span>{criterion}</span>
-                            </label>
+                    <div className="p-5 space-y-5">
+                      {/* SECTION A — Mandatory Eligibility Gates */}
+                      <div className="bg-white rounded border border-slate-200 overflow-hidden">
+                        <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2">
+                          <span className="text-[9px] font-extrabold text-sidebar bg-sidebar/10 px-1.5 py-0.5 rounded uppercase tracking-widest">Section A</span>
+                          <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">Mandatory Eligibility Gates</span>
+                        </div>
+                        <div className="px-4 py-3 space-y-2.5">
+                          {/* Sector-published criteria first */}
+                          {(sectorRules[p.sector] || []).length === 0 ? (
+                            <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2.5 py-2">
+                              No sector-specific criteria published for "{p.sector}" yet — Admin can add them under Success Criteria.
+                            </p>
+                          ) : (
+                            (sectorRules[p.sector] || []).map((criterion, idx) => {
+                              const badges = ["GFR R.170", "GFR R.173", "Safety"];
+                              const badge = badges[idx] || null;
+                              return (
+                                <div key={idx} className="flex items-center justify-between">
+                                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={criteriaChecks[idx] !== false}
+                                      onChange={(e) => setCriteriaChecks(prev => ({ ...prev, [idx]: e.target.checked }))}
+                                      className="rounded border-slate-300 text-sidebar-active"
+                                    />
+                                    {criterion}
+                                  </label>
+                                  {badge && <span className="text-[9px] font-bold bg-teal-100 text-teal-800 border border-teal-200 px-1.5 py-0.5 rounded ml-3 shrink-0">{badge}</span>}
+                                </div>
+                              );
+                            })
+                          )}
+                          {/* Fixed universal compliance gates */}
+                          {[
+                            { label: "DPIIT recognition is valid and current at time of audit", badge: "DPIIT" },
+                            { label: "No pending legal disputes or CVC flags against the startup", badge: "CVC" },
+                          ].map((gate, i) => (
+                            <div key={gate.badge} className="flex items-center justify-between">
+                              <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={criteriaChecks[`gate_${i}`] !== false}
+                                  onChange={(e) => setCriteriaChecks(prev => ({ ...prev, [`gate_${i}`]: e.target.checked }))}
+                                  className="rounded border-slate-300 text-sidebar-active"
+                                />
+                                {gate.label}
+                              </label>
+                              <span className="text-[9px] font-bold bg-teal-100 text-teal-800 border border-teal-200 px-1.5 py-0.5 rounded ml-3 shrink-0">{gate.badge}</span>
+                            </div>
                           ))}
                         </div>
-                      )}
-                    </div>
+                      </div>
 
-                    {/* 2. How the evidence was actually checked, not just what was submitted. */}
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">2. Verification Method</label>
-                      <select
-                        required
-                        value={verificationMethod}
-                        onChange={(e) => setVerificationMethod(e.target.value)}
-                        className="w-full border border-slate-300 rounded px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-sidebar-active"
-                      >
-                        <option value="" disabled>How was this evidence independently checked?</option>
-                        <option value="Site Visit">Site Visit — physical inspection of the deployment</option>
-                        <option value="Remote Telemetry Audit">Remote Telemetry Audit — cross-checked live sensor/SCADA data</option>
-                        <option value="Document Review">Document Review — desk audit of submitted reports</option>
-                        <option value="Third-Party Lab Report">Third-Party Lab Report — independent test certificate</option>
-                      </select>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">3. Score (0-100)</label>
-                        <div className="flex items-center gap-2">
-                          <input type="range" min="0" max="100" value={score} onChange={(e) => setScore(e.target.value)} className="flex-grow accent-sidebar-active" />
-                          <span className="font-bold text-xs text-slate-800 w-10 text-right">{score}/100</span>
+                      {/* SECTION B — Weighted Performance Scoring */}
+                      <div className="bg-white rounded border border-slate-200 overflow-hidden">
+                        <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2">
+                          <span className="text-[9px] font-extrabold text-sidebar bg-sidebar/10 px-1.5 py-0.5 rounded uppercase tracking-widest">Section B</span>
+                          <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">Weighted Performance Scoring</span>
+                        </div>
+                        <div className="px-4 py-4 space-y-4">
+                          {[
+                            { label: "Outcome Achievement", sub: "Quantified improvement vs. baseline; data integrity", max: 40, val: scoreOutcome, set: setScoreOutcome },
+                            { label: "Replicability", sub: "Scalability to other wards/districts; vendor support plan", max: 20, val: scoreReplicability, set: setScoreReplicability },
+                            { label: "Operational Compliance", sub: "GFR adherence, milestone delivery, PFMS alignment", max: 15, val: scoreCompliance, set: setScoreCompliance },
+                          ].map(({ label, sub, max, val, set }) => (
+                            <div key={label}>
+                              <div className="flex justify-between items-baseline mb-1">
+                                <div>
+                                  <span className="text-[11px] font-bold text-slate-800">{label}</span>
+                                  <span className="text-[10px] text-slate-400 ml-1.5">(max {max})</span>
+                                </div>
+                                <span className="font-display font-extrabold text-base text-sidebar-active tabular-nums">{val}<span className="text-slate-400 font-normal text-xs">/{max}</span></span>
+                              </div>
+                              <p className="text-[10px] text-slate-400 italic mb-1.5">{sub}</p>
+                              <input
+                                type="range" min="0" max={max} value={val}
+                                onChange={(e) => set(Number(e.target.value))}
+                                className="w-full accent-sidebar-active"
+                              />
+                            </div>
+                          ))}
+                          <div className="pt-2 border-t border-slate-100 flex justify-end">
+                            <span className={`font-display font-extrabold text-xl ${isCertifiable ? "text-emerald-600" : "text-rose-600"}`}>
+                              {compositeScore}/100 — {isCertifiable ? "Certifiable" : "Below Threshold"}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">4. Technical Findings &amp; Auditor Notes</label>
-                      <textarea required rows={3} placeholder="Detailed assessment: what was checked, what it showed, and why it does or doesn't support the outcome claimed..." value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-1.5 text-xs focus:outline-none" />
-                    </div>
 
-                    {/* 3. Compliance declarations — a real audit form doesn't just record a
-                        score, it records that the auditor is independent and actually looked. */}
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">5. Auditor Declarations</label>
-                      <div className="space-y-1.5 bg-white p-2.5 rounded border border-slate-200">
-                        <label className="flex items-start gap-2 text-[11px] text-slate-700 cursor-pointer">
-                          <input type="checkbox" checked={evidenceReviewed} onChange={(e) => setEvidenceReviewed(e.target.checked)} className="mt-0.5 rounded border-slate-300 text-sidebar-active" />
-                          <span>I have reviewed the submitted evidence documentation and consider it sufficient to support this decision.</span>
-                        </label>
-                        <label className="flex items-start gap-2 text-[11px] text-slate-700 cursor-pointer">
-                          <input type="checkbox" checked={noConflict} onChange={(e) => setNoConflict(e.target.checked)} className="mt-0.5 rounded border-slate-300 text-sidebar-active" />
-                          <span>I declare no financial or personal conflict of interest with the vendor or the sponsoring department.</span>
-                        </label>
+                      {/* SECTION C — Qualitative Assessment */}
+                      <div className="bg-white rounded border border-slate-200 overflow-hidden">
+                        <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2">
+                          <span className="text-[9px] font-extrabold text-sidebar bg-sidebar/10 px-1.5 py-0.5 rounded uppercase tracking-widest">Section C</span>
+                          <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">Qualitative Assessment</span>
+                        </div>
+                        <div className="px-4 py-4 space-y-4">
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1.5 tracking-wider">Verification Method</label>
+                            <select
+                              value={verificationMethod}
+                              onChange={(e) => setVerificationMethod(e.target.value)}
+                              className="w-full border border-slate-300 rounded px-3 py-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-sidebar-active"
+                            >
+                              <option value="" disabled>How was this evidence independently checked?</option>
+                              <option value="Site Visit">Site Visit — physical inspection of the deployment</option>
+                              <option value="Remote Telemetry Audit">Remote Telemetry Audit — cross-checked live sensor/SCADA data</option>
+                              <option value="Document Review">Document Review — desk audit of submitted reports</option>
+                              <option value="Third-Party Lab Report">Third-Party Lab Report — independent test certificate</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1.5 tracking-wider">Auditor Recommendation</label>
+                            <select
+                              value={auditorRecommendation}
+                              onChange={(e) => setAuditorRecommendation(e.target.value)}
+                              className="w-full border border-slate-300 rounded px-3 py-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-sidebar-active"
+                            >
+                              <option value="" disabled>Select recommendation</option>
+                              <option value="Recommend for Full-Scale Procurement (GFR Rule 170)">Recommend for Full-Scale Procurement (GFR Rule 170)</option>
+                              <option value="Conditional Certification — address noted caveats first">Conditional Certification — address noted caveats first</option>
+                              <option value="Recommend Re-pilot with Revised Scope">Recommend Re-pilot with Revised Scope</option>
+                              <option value="Reject — Evidence Insufficient">Reject — Evidence Insufficient</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1.5 tracking-wider">
+                              Risks, Caveats &amp; Conditions <span className="normal-case font-normal text-slate-400">(optional)</span>
+                            </label>
+                            <textarea
+                              rows={2}
+                              placeholder="Note any data gaps, seasonal variability, vendor lock-in risks, or conditions for conditional certification..."
+                              value={riskCaveats}
+                              onChange={(e) => setRiskCaveats(e.target.value)}
+                              className="w-full border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-sidebar-active resize-y"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1.5 tracking-wider">
+                              Detailed Auditor Notes <span className="text-rose-500">*</span>
+                            </label>
+                            <textarea
+                              rows={4}
+                              placeholder="Provide a thorough technical assessment covering evidence quality, methodology, outcome verification, and your overall conclusion..."
+                              value={notes}
+                              onChange={(e) => setNotes(e.target.value)}
+                              className="w-full border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-sidebar-active resize-y"
+                            />
+                          </div>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="flex gap-2 justify-end pt-1 border-t border-slate-200">
-                      <button onClick={resetAuditForm} className="border border-slate-300 text-slate-500 py-1.5 px-2.5 rounded text-[10px] font-semibold">Cancel</button>
-                      <button
-                        onClick={() => handleVerifyAction("Rejected")}
-                        disabled={!notes.trim() || !verificationMethod || !evidenceReviewed || !noConflict}
-                        className="bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-1.5 px-2.5 rounded text-[10px] transition"
-                      >
-                        Reject
-                      </button>
-                      <button
-                        onClick={() => handleVerifyAction("Certified")}
-                        disabled={!notes.trim() || !verificationMethod || !evidenceReviewed || !noConflict}
-                        className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-1.5 px-2.5 rounded text-[10px] transition"
-                      >
-                        Certify
-                      </button>
+                      {/* SECTION D — Auditor Declaration */}
+                      <div className="bg-white rounded border border-slate-200 overflow-hidden">
+                        <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2">
+                          <span className="text-[9px] font-extrabold text-sidebar bg-sidebar/10 px-1.5 py-0.5 rounded uppercase tracking-widest">Section D</span>
+                          <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">Auditor Declaration</span>
+                        </div>
+                        <div className="px-4 py-4">
+                          <label className="flex items-start gap-3 text-[11px] text-slate-700 cursor-pointer leading-relaxed">
+                            <input
+                              type="checkbox"
+                              checked={auditorDeclaration}
+                              onChange={(e) => setAuditorDeclaration(e.target.checked)}
+                              className="mt-0.5 rounded border-slate-300 text-sidebar-active shrink-0"
+                            />
+                            <span>
+                              I, <strong>{currentUser.name}</strong> ({currentUser.organization}), certify that this evaluation has been conducted independently and in good faith, based on submitted evidence and field verification. I confirm no conflict of interest with the applicant startup and accept accountability for this audit decision under GFR 2017.
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex gap-2 justify-between items-center pt-1">
+                        <button onClick={resetAuditForm} className="border border-slate-300 text-slate-500 py-2 px-4 rounded text-xs font-semibold hover:bg-slate-50 transition">Cancel</button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleVerifyAction("Rejected")}
+                            disabled={!notes.trim() || !verificationMethod || !auditorDeclaration || !auditorRecommendation}
+                            className="bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded text-xs transition"
+                          >
+                            Reject Pilot
+                          </button>
+                          <button
+                            onClick={() => handleVerifyAction("Certified")}
+                            disabled={!notes.trim() || !verificationMethod || !auditorDeclaration || !auditorRecommendation}
+                            className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded text-xs transition"
+                          >
+                            Certify &amp; Issue Passport
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -3321,6 +3479,79 @@ function VerifierDashboard({
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ALL PASSPORTS */}
+      {currentTab === "all-passports" && (
+        <div className="space-y-4 animate-fade-in">
+          <DeskHeader
+            eyebrow="Certified Precedent Registry"
+            title="All Pilot Passports"
+            blurb="Every pilot certified by an independent verifier is listed here. Each passport is a citable public record with an immutable audit hash, available for adoption by any participating Urban Local Body."
+            standing={{ label: "Your sector", value: currentUser.sector }}
+          />
+          <LedgerStrip items={[
+            { label: "Total certified", value: pilots.filter(p => p.status === "Certified").length, note: "Across all sectors" },
+            { label: "Certified by you", value: pilots.filter(p => p.verification?.verifierId === currentUser.id).length, note: "Outcomes you signed off" },
+            { label: "In your sector", value: pilots.filter(p => p.status === "Certified" && p.sector === currentUser.sector).length, note: currentUser.sector },
+          ]} />
+          {pilots.filter(p => p.status === "Certified").length === 0 ? (
+            <div className="bg-white rounded-lg p-8 border border-slate-200 text-center text-slate-400">
+              <Award className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+              <p className="font-bold text-slate-600 text-sm">No certified pilots yet</p>
+              <p className="text-xs mt-1">Pilots appear here once a verifier issues a Certification & Passport.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {pilots.filter(p => p.status === "Certified").map(p => (
+                <div key={p.id} className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="bg-sidebar px-5 py-3 flex justify-between items-center">
+                    <div>
+                      <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest">Certified Outcome Precedent</span>
+                      <h3 className="text-sm font-bold text-white mt-0.5">{p.title}</h3>
+                      <p className="text-[10px] text-white/70 mt-0.5">{p.sector} · {p.department}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-display font-extrabold text-2xl text-white tabular-nums">{p.verification?.score ?? "—"}</span>
+                      <span className="text-white/50 text-xs">/100</span>
+                      <p className="text-[9px] text-white/40 uppercase tracking-wider mt-0.5">Audit Score</p>
+                    </div>
+                  </div>
+                  <div className="px-5 py-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px]">
+                    <div>
+                      <p className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Startup</p>
+                      <p className="font-semibold text-sidebar mt-0.5">{p.application?.startupName || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Certified On</p>
+                      <p className="font-semibold text-slate-700 mt-0.5">{p.verification?.certifiedAt || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Auditor</p>
+                      <p className="font-semibold text-slate-700 mt-0.5">{p.verification?.verifierName || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Audit Hash</p>
+                      <p className="font-mono text-[9px] text-slate-500 mt-0.5 break-all">SHA256-{p.id.toUpperCase()}-CERT</p>
+                    </div>
+                  </div>
+                  {p.verification?.notes && (
+                    <div className="px-5 pb-4">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Auditor Notes</p>
+                      <p className="text-[11px] text-slate-600 italic">"{p.verification.notes}"</p>
+                    </div>
+                  )}
+                  <div className="px-5 pb-4 flex gap-2">
+                    <button onClick={() => setSelectedPilot(p)} className="text-[10px] font-bold text-sidebar-active hover:underline">Full Details →</button>
+                    {p.verification?.verifierId === currentUser.id && (
+                      <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded font-bold">Your Certification</span>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

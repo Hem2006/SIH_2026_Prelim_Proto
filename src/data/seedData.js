@@ -1,4 +1,4 @@
-export const initialUsers = {
+﻿export const initialUsers = {
   ram: {
     id: "ram",
     name: "Ram",
@@ -52,7 +52,7 @@ export const initialUsers = {
 export const initialPilots = [
   {
     id: "p1",
-    title: "Leak Detection Pilot — Pune Ward 12",
+    title: "Leak Detection Pilot â€” Pune Ward 12",
     department: "Pune Municipal Corporation",
     sponsoringOfficialId: "arjun",
     sponsoringOfficialName: "Arjun",
@@ -96,8 +96,8 @@ export const initialPilots = [
       verifierName: "Dr. Kavita Rao",
       score: 95,
       scorecard: [
-        { criterion: "≥15% measurable improvement", passed: true },
-        { criterion: "pilot ran ≥60 days", passed: true },
+        { criterion: "â‰¥15% measurable improvement", passed: true },
+        { criterion: "pilot ran â‰¥60 days", passed: true },
         { criterion: "no safety incidents", passed: true }
       ],
       notes: "Outcome evidence is thoroughly documented and cross-verified via SCADA data. Flow telemetry confirms the 22% drop in water wastage. Very strong performance and highly replicable design.",
@@ -193,6 +193,87 @@ export const initialPilots = [
     applications: [],
     evidence: null,
     verification: null
+  },
+  {
+    id: "p4",
+    title: "Smart Pressure Management â€” Nagpur Zone 3",
+    department: "Nagpur Municipal Corporation",
+    sponsoringOfficialId: "meera",
+    sponsoringOfficialName: "Meera",
+    budgetCap: 950000,
+    durationDays: 75,
+    sector: "Water & Sanitation",
+    description: "Deploy intelligent pressure regulators and SCADA-integrated sensors at 6 critical junctions in Nagpur Zone 3 to reduce pipe-burst incidents and non-revenue water loss.",
+    status: "Completed",
+    application: {
+      id: "app_ram_p4",
+      startupId: "ram",
+      startupName: "AquaSense Technologies",
+      proposedCost: 900000,
+      proposedScope: "Deploy pressure regulators and 15 real-time sensors across Zone 3 distribution network, with SCADA dashboard integration and 24x7 alert system.",
+      dpiitNo: "DPIIT98372",
+      appliedAt: "2026-06-12",
+      status: "Selected"
+    },
+    applications: [
+      {
+        id: "app_ram_p4",
+        startupId: "ram",
+        startupName: "AquaSense Technologies",
+        proposedCost: 900000,
+        proposedScope: "Deploy pressure regulators and 15 real-time sensors across Zone 3 distribution network, with SCADA dashboard integration and 24x7 alert system.",
+        dpiitNo: "DPIIT98372",
+        appliedAt: "2026-06-12",
+        status: "Selected"
+      }
+    ],
+    evidence: {
+      waterLossReduction: "18% reduction in pipe-burst incidents",
+      duration: "75 days",
+      sensorsDeployed: "15 pressure sensors",
+      summary: "Deployed pressure regulators across 6 critical junctions in Zone 3. Burst incidents dropped from 11 to 2 over the pilot period. Real-time alerts prevented 3 major failures.",
+      docs: "PressureManagement_NagpurZone3_Report.pdf",
+      submittedAt: "2026-09-01",
+      sponsorFeedback: "Highly effective. The SCADA integration gave us live visibility we never had before. Recommend expansion to Zone 4 and 5."
+    },
+    verification: null,
+    escrow: {
+      totalAmount: 900000,
+      disbursedAmount: 630000,
+      pfmsAccountRef: "PFMS-MAHA-NMC-2026-4471",
+      milestones: [
+        {
+          id: "m1",
+          title: "Milestone 1: Equipment Mobilization & Deployment",
+          percentage: 30,
+          amount: 270000,
+          deliverable: "Deploy 15 pressure sensors and integrate with NMC SCADA dashboard",
+          status: "Disbursed",
+          disbursedAt: "2026-06-28",
+          txRef: "TXN-PFMS-74421"
+        },
+        {
+          id: "m2",
+          title: "Milestone 2: Mid-Term Telemetry & Operations",
+          percentage: 40,
+          amount: 360000,
+          deliverable: "45-day telemetry stream with burst incident monitoring and alert validation",
+          status: "Disbursed",
+          disbursedAt: "2026-08-10",
+          txRef: "TXN-PFMS-74890"
+        },
+        {
+          id: "m3",
+          title: "Milestone 3: Final Verification & Handover",
+          percentage: 30,
+          amount: 270000,
+          deliverable: "Independent verification audit completion and full zone handover",
+          status: "Pending",
+          disbursedAt: null,
+          txRef: null
+        }
+      ]
+    }
   }
 ];
 
@@ -200,7 +281,7 @@ export const initialProcurements = [
   {
     id: "pr1",
     pilotId: "p1",
-    pilotTitle: "Leak Detection Pilot — Pune Ward 12",
+    pilotTitle: "Leak Detection Pilot â€” Pune Ward 12",
     startupId: "ram",
     startupName: "AquaSense Technologies",
     sponsoringDepartment: "Pune Municipal Corporation",
@@ -241,27 +322,27 @@ export const initialOnboardingRequests = [
 
 export const initialSectorRules = {
   "Water & Sanitation": [
-    "≥15% measurable improvement",
-    "pilot ran ≥60 days",
-    "no safety incidents"
+    "â‰¥15% measurable improvement in key sector metric confirmed",
+    "Pilot ran for â‰¥60 continuous days",
+    "Zero safety incidents during pilot period"
   ],
   "Energy & Cleantech": [
-    "≥10% energy savings",
+    "â‰¥10% energy savings",
     "zero grid disturbances",
-    "pilot ran ≥90 days"
+    "pilot ran â‰¥90 days"
   ],
   "Healthcare & Medtech": [
-    "≥98% diagnostic accuracy",
+    "â‰¥98% diagnostic accuracy",
     "zero patient complaints",
     "CDSCO standards alignment"
   ],
   "Roadworks": [
-    "≥20% reduction in surface defects",
-    "pilot ran ≥90 days",
+    "â‰¥20% reduction in surface defects",
+    "pilot ran â‰¥90 days",
     "no traffic safety incidents"
   ],
   "Food Technology": [
-    "≥95% batch quality compliance",
+    "â‰¥95% batch quality compliance",
     "zero contamination events",
     "FSSAI standards alignment"
   ]
@@ -314,3 +395,4 @@ export const createPilotEscrow = (cost) => {
     ]
   };
 };
+
